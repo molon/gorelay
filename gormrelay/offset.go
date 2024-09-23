@@ -30,14 +30,9 @@ func NewOffsetFinder[T any](db *gorm.DB) cursor.OffsetFinder[T] {
 
 		db = db.Limit(limit)
 
-		// If T is not a struct or struct pointer, we need to use db.Statement.Model to find
-		basedOnModel := false
-		tType := reflect.TypeOf((*T)(nil)).Elem()
-		if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
-			if db.Statement.Model == nil {
-				return nil, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
-			}
-			basedOnModel = true
+		basedOnModel, err := shouldBasedOnModel[T](db)
+		if err != nil {
+			return nil, err
 		}
 
 		if !basedOnModel && db.Statement.Model == nil {
@@ -110,15 +105,12 @@ func (a *OffsetCounter[T]) Find(ctx context.Context, orderBys []relay.OrderBy, s
 func (a *OffsetCounter[T]) Count(ctx context.Context) (int, error) {
 	db := a.db
 
-	// If T is not a struct or struct pointer, we need to use db.Statement.Model to find
-	tType := reflect.TypeOf((*T)(nil)).Elem()
-	if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
-		if db.Statement.Model == nil {
-			return 0, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
-		}
+	basedOnModel, err := shouldBasedOnModel[T](db)
+	if err != nil {
+		return 0, err
 	}
 
-	if db.Statement.Context != ctx {
+	if !basedOnModel && db.Statement.Context != ctx {
 		db = db.WithContext(ctx)
 	}
 

@@ -51,14 +51,6 @@ func createWhereExpr(s *schema.Schema, orderBys []relay.OrderBy, keyset map[stri
 	return clause.And(clause.Or(ors...)), nil
 }
 
-func parseSchema(db *gorm.DB, v any) (*schema.Schema, error) {
-	stmt := &gorm.Statement{DB: db}
-	if err := stmt.Parse(v); err != nil {
-		return nil, errors.Wrap(err, "parse schema with db")
-	}
-	return stmt.Schema, nil
-}
-
 // Example:
 // db.Clauses(
 //
@@ -162,13 +154,12 @@ func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []
 		return nodes, nil
 	}
 
-	// If T is not a struct or struct pointer, we need to use db.Statement.Model to find
-	tType := reflect.TypeOf((*T)(nil)).Elem()
-	if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
-		if db.Statement.Model == nil {
-			return nil, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
-		}
+	basedOnModel, err := shouldBasedOnModel[T](db)
+	if err != nil {
+		return nil, err
+	}
 
+	if basedOnModel {
 		modelType := reflect.TypeOf(db.Statement.Model)
 		sliceType := reflect.SliceOf(modelType)
 		nodesVal := reflect.New(sliceType).Elem()
@@ -194,7 +185,7 @@ func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []
 		db = db.Model(t)
 	}
 
-	err := db.Scopes(scopeKeyset(after, before, orderBys, limit, fromLast)).Find(&nodes).Error
+	err = db.Scopes(scopeKeyset(after, before, orderBys, limit, fromLast)).Find(&nodes).Error
 	if err != nil {
 		return nil, errors.Wrap(err, "find")
 	}
@@ -243,19 +234,16 @@ func (a *KeysetCounter[T]) Find(ctx context.Context, after, before *map[string]a
 func (a *KeysetCounter[T]) Count(ctx context.Context) (int, error) {
 	db := a.db
 
-	// If T is not a struct or struct pointer, we need to use db.Statement.Model to find
-	tType := reflect.TypeOf((*T)(nil)).Elem()
-	if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
-		if db.Statement.Model == nil {
-			return 0, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
-		}
+	basedOnModel, err := shouldBasedOnModel[T](db)
+	if err != nil {
+		return 0, err
 	}
 
 	if db.Statement.Context != ctx {
 		db = db.WithContext(ctx)
 	}
 
-	if db.Statement.Model == nil {
+	if !basedOnModel && db.Statement.Model == nil {
 		var t T
 		db = db.Model(t)
 	}
@@ -269,4 +257,24 @@ func (a *KeysetCounter[T]) Count(ctx context.Context) (int, error) {
 
 func NewKeysetAdapter[T any](db *gorm.DB) relay.ApplyCursorsFunc[T] {
 	return cursor.NewKeysetAdapter(NewKeysetCounter[T](db))
+}
+
+func parseSchema(db *gorm.DB, v any) (*schema.Schema, error) {
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(v); err != nil {
+		return nil, errors.Wrap(err, "parse schema with db")
+	}
+	return stmt.Schema, nil
+}
+
+// If T is not a struct or struct pointer, we need to use db.Statement.Model to find or count
+func shouldBasedOnModel[T any](db *gorm.DB) (bool, error) {
+	tType := reflect.TypeOf((*T)(nil)).Elem()
+	if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
+		if db.Statement.Model == nil {
+			return true, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
+		}
+		return true, nil
+	}
+	return false, nil
 }
