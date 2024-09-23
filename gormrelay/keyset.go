@@ -242,6 +242,15 @@ func (a *KeysetCounter[T]) Find(ctx context.Context, after, before *map[string]a
 
 func (a *KeysetCounter[T]) Count(ctx context.Context) (int, error) {
 	db := a.db
+
+	// If T is not a struct or struct pointer, we need to use db.Statement.Model to find
+	tType := reflect.TypeOf((*T)(nil)).Elem()
+	if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
+		if db.Statement.Model == nil {
+			return 0, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
+		}
+	}
+
 	if db.Statement.Context != ctx {
 		db = db.WithContext(ctx)
 	}

@@ -11,15 +11,16 @@ import (
 func TestJsoniterWithStructFieldNameAndEmitEmpty(t *testing.T) {
 	type User struct {
 		gorm.Model
-		Name        string `json:"name,omitempty"`
-		Description string `json:"description,omitempty"`
-		age         int
+		Name           string `json:"name,omitempty"`
+		Description    string `json:"description,omitempty"`
+		IgnoredByRelay func() `relay:"-"`
+		age            int
 	}
 	jsonCustomize := jsoniter.Config{
 		EscapeHTML:             true,
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
-		TagKey:                 "__dummy__",
+		TagKey:                 KeysetTagKey,
 	}.Froze()
 	str, err := jsonCustomize.MarshalToString(User{
 		Model: gorm.Model{ID: 1},
@@ -32,10 +33,11 @@ func TestJsoniterWithStructFieldNameAndEmitEmpty(t *testing.T) {
 func TestEncodeKeysetCursor(t *testing.T) {
 	type User struct {
 		gorm.Model
-		Name          string `json:"name,omitempty"`
-		Description   string `json:"description,omitempty"`
-		IgnoredByJson string `json:"-"`
-		age           int
+		Name           string `json:"name,omitempty"`
+		Description    string `json:"description,omitempty"`
+		IgnoredByJson  string `json:"-"`
+		IgnoredByRelay func() `json:"-" relay:"-"`
+		age            int
 	}
 	user := User{
 		Model: gorm.Model{ID: 1},
@@ -61,4 +63,25 @@ func TestEncodeKeysetCursor(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, `{"Description":"","IgnoredByJson":"","Name":"molon"}`, cursor)
 	}
+	{
+		cursor, err := EncodeKeysetCursor(user, []string{"Name", "Description", "FieldNotExists"})
+		require.ErrorContains(t, err, `key "FieldNotExists" not found in node`)
+		require.Empty(t, cursor)
+	}
+
+	type UserWithoutRelayTagForUnsupportedType struct {
+		gorm.Model
+		Name           string `json:"name,omitempty"`
+		IgnoredByRelay func() `json:"-"`
+	}
+
+	cursor, err := EncodeKeysetCursor(
+		&UserWithoutRelayTagForUnsupportedType{
+			Model: gorm.Model{ID: 1},
+			Name:  "molon",
+		},
+		[]string{"Name"},
+	)
+	require.ErrorContains(t, err, `func() is unsupported type`)
+	require.Empty(t, cursor)
 }

@@ -55,7 +55,7 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) relay.ApplyCursorsFunc[T] {
 		}
 		if before != nil {
 			rangeLen := *before - skip
-			if rangeLen < 0 {
+			if rangeLen <= 0 {
 				rangeLen = 0
 			}
 			if limit > rangeLen {
@@ -67,7 +67,7 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) relay.ApplyCursorsFunc[T] {
 		}
 
 		var edges []relay.LazyEdge[T]
-		if limit <= 0 || (hasCounter && (skip >= totalCount || totalCount == 0)) {
+		if limit <= 0 || (hasCounter && (skip >= totalCount || totalCount <= 0)) {
 			edges = make([]relay.LazyEdge[T], 0)
 		} else {
 			nodes, err := finder.Find(ctx, req.OrderBys, skip, limit)

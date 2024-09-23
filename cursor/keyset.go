@@ -73,12 +73,14 @@ func NewKeysetAdapter[T any](finder KeysetFinder[T]) relay.ApplyCursorsFunc[T] {
 	}
 }
 
+const KeysetTagKey = "relay"
+
 // use strcut field name as key and force emit empty
 var jsoniterForKeyset = jsoniter.Config{
 	EscapeHTML:             true,
 	SortMapKeys:            true,
 	ValidateJsonRawMessage: true,
-	TagKey:                 "__gorelay_dummy__",
+	TagKey:                 KeysetTagKey,
 }.Froze()
 
 func EncodeKeysetCursor[T any](node T, keys []string) (string, error) {
@@ -86,11 +88,27 @@ func EncodeKeysetCursor[T any](node T, keys []string) (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "marshal cursor")
 	}
+
 	m := make(map[string]any)
 	if err := jsoniterForKeyset.Unmarshal(b, &m); err != nil {
 		return "", errors.Wrap(err, "unmarshal cursor")
 	}
-	b, err = jsoniterForKeyset.Marshal(lo.PickByKeys(m, keys))
+
+	keysMap := lo.SliceToMap(keys, func(key string) (string, bool) {
+		return key, true
+	})
+	for k := range keysMap {
+		if _, ok := m[k]; !ok {
+			return "", errors.Errorf("key %q not found in node", k)
+		}
+	}
+	for k := range m {
+		if _, ok := keysMap[k]; !ok {
+			delete(m, k)
+		}
+	}
+
+	b, err = jsoniterForKeyset.Marshal(m)
 	if err != nil {
 		return "", errors.Wrap(err, "marshal filtered cursor")
 	}

@@ -520,7 +520,7 @@ func TestOffsetCursor(t *testing.T) {
 	}
 }
 
-func TestOffsetWithoutCounter(t *testing.T) {
+func TestOffsetWithLastAndNilBeforeIfNoCounter(t *testing.T) {
 	resetDB(t)
 
 	p := relay.New(
@@ -534,46 +534,8 @@ func TestOffsetWithoutCounter(t *testing.T) {
 		},
 	)
 	resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
-		First: lo.ToPtr(10),
-	})
-	require.NoError(t, err)
-	require.Len(t, resp.Edges, 10)
-	require.Equal(t, 1, resp.Edges[0].Node.ID)
-	require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.ID)
-	require.Zero(t, resp.PageInfo.TotalCount)
-}
-
-func TestOffsetGenericTypeAny(t *testing.T) {
-	resetDB(t)
-
-	p := relay.New(
-		false,
-		10, 10,
-		[]relay.OrderBy{
-			{Field: "ID", Desc: false},
-		}, func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[any], error) {
-			// This is a generic(T: any) function, so we need to cast the model to the correct type
-			return NewOffsetAdapter[any](db.Model(&User{}))(ctx, req)
-		},
-	)
-	resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[any]{
-		First: lo.ToPtr(10),
-	})
-	require.NoError(t, err)
-	require.Len(t, resp.Edges, 10)
-	require.Len(t, resp.Edges, 10)
-	require.Equal(t, 1, resp.Edges[0].Node.(*User).ID)
-	require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.(*User).ID)
-	require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
-	require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
-
-	resp, err = p.Paginate(context.Background(), &relay.PaginateRequest[any]{
 		Last: lo.ToPtr(10),
 	})
-	require.NoError(t, err)
-	require.Len(t, resp.Edges, 10)
-	require.Equal(t, 91, resp.Edges[0].Node.(*User).ID)
-	require.Equal(t, 100, resp.Edges[len(resp.Edges)-1].Node.(*User).ID)
-	require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
-	require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
+	require.ErrorContains(t, err, "counter is required for fromLast and nil before")
+	require.Nil(t, resp)
 }
