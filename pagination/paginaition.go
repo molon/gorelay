@@ -9,7 +9,7 @@ import (
 
 type OrderBy struct {
 	Field string `json:"field"`
-	Desc  bool   `json:"desc"` // TODO: enum ?
+	Desc  bool   `json:"desc"`
 }
 
 type PaginateRequest[T any] struct {

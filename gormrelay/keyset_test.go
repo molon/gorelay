@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/molon/gorelay/cursor"
 	"github.com/molon/gorelay/pagination"
@@ -577,5 +578,76 @@ func TestKeysetCursor(t *testing.T) {
 			require.Len(t, resp.Edges, tc.expectedEdgesLen)
 			require.Equal(t, tc.expectedPageInfo, resp.PageInfo)
 		})
+	}
+}
+
+func TestUnexpectOrderBys(t *testing.T) {
+	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
+		pagination.New[*User](10, 10, nil, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			return nil, nil
+		})
+	})
+	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
+		pagination.New[*User](10, 10, []pagination.OrderBy{}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			return nil, nil
+		})
+	})
+
+	p := pagination.New(10, 10,
+		[]pagination.OrderBy{
+			{Field: "ID", Desc: false},
+		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			return nil, nil
+		},
+	)
+	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		First: lo.ToPtr(10),
+		OrderBys: []pagination.OrderBy{
+			{Field: "ID", Desc: false},
+			{Field: "ID", Desc: true},
+		},
+	})
+	require.ErrorContains(t, err, "duplicated order by fields [ID]")
+	require.Nil(t, resp)
+}
+
+func TestContext(t *testing.T) {
+	resetDB(t)
+
+	{
+		p := pagination.New(
+			10, 10,
+			[]pagination.OrderBy{
+				{Field: "ID", Desc: false},
+			}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+				return NewKeysetAdapter[*User](db)(ctx, req)
+			},
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+		resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
+			First: lo.ToPtr(10),
+		})
+		require.ErrorContains(t, err, "context deadline exceeded")
+		require.Nil(t, resp)
+	}
+
+	{
+		p := pagination.New(
+			10, 10,
+			[]pagination.OrderBy{
+				{Field: "ID", Desc: false},
+			}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+				// Set WithContext here
+				return NewKeysetAdapter[*User](db.WithContext(ctx))(ctx, req)
+			},
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+		resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
+			First: lo.ToPtr(10),
+		})
+		require.ErrorContains(t, err, "context deadline exceeded")
+		require.Nil(t, resp)
 	}
 }
