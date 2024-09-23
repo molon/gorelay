@@ -44,14 +44,47 @@ func createWhereExpr(orderBys []pagination.OrderBy, keyset map[string]any, rever
 			eqs = append(eqs, clause.Eq{Column: column, Value: v})
 		}
 	}
-	return clause.Or(ors...), nil
+	return clause.And(clause.Or(ors...)), nil
 }
 
+// Example:
+// db.Clauses(
+//
+//	 	// This is for `Where`, so we cant use `Where(clause.And(clause.Or(...),clause.Or(...)))`
+//		clause.And(
+//			clause.Or( // after
+//				clause.And(
+//					clause.Gt{Column: "age", Value: 85}, // ASC
+//				),
+//				clause.And(
+//					clause.Eq{Column: "age", Value: 85},
+//					clause.Lt{Column: "name", Value: "name15"}, // DESC
+//				),
+//			),
+//		),
+//		clause.And(
+//			clause.Or( // before
+//				clause.And(
+//					clause.Lt{Column: "age", Value: 88},
+//				),
+//				clause.And(
+//					clause.Eq{Column: "age", Value: 88},
+//					clause.Gt{Column: "name", Value: "name12"},
+//				),
+//			),
+//		),
+//		clause.OrderBy{
+//			Columns: []clause.OrderByColumn{
+//				{Column: clause.Column{Name: "age"}, Desc: false},
+//				{Column: clause.Column{Name: "name"}, Desc: true},
+//			},
+//		},
+//		clause.Limit{Limit: &limit},
+//
+// )
 func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		var exprs []clause.Expression
-
-		// TODO: need direction up or down ?
 
 		if after != nil {
 			expr, err := createWhereExpr(orderBys, *after, false)
@@ -89,43 +122,34 @@ func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, l
 			exprs = append(exprs, clause.OrderBy{Columns: orderByColumns})
 		}
 
-		// Example:
-		// db.Clauses(
-		// 	clause.Or( // after
-		// 		clause.And(
-		// 			clause.Gt{Column: "age", Value: 85}, // ASC
-		// 		),
-		// 		clause.And(
-		// 			clause.Eq{Column: "age", Value: 85},
-		// 			clause.Lt{Column: "name", Value: "name15"}, // DESC
-		// 		),
-		// 	),
-		// 	clause.Or( // before
-		// 		clause.And(
-		// 			clause.Lt{Column: "age", Value: 88},
-		// 		),
-		// 		clause.And(
-		// 			clause.Eq{Column: "age", Value: 88},
-		// 			clause.Gt{Column: "name", Value: "name12"},
-		// 		),
-		// 	),
-		// 	clause.OrderBy{
-		// 		Columns: []clause.OrderByColumn{
-		// 			{Column: clause.Field{Name: "age"}, Desc: false},
-		// 			{Column: clause.Field{Name: "name"}, Desc: true},
-		// 		},
-		// 	},
-		// )
-		return db.Clauses(exprs...).Limit(limit)
+		if limit > 0 {
+			exprs = append(exprs, clause.Limit{Limit: &limit})
+		}
+
+		return db.Clauses(exprs...)
 	}
+}
+
+func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error) {
+	var nodes []T
+	if limit == 0 {
+		return nodes, nil
+	}
+
+	err := db.Scopes(scopeKeyset(after, before, orderBys, limit, fromLast)).Find(&nodes).Error
+	if err != nil {
+		return nil, errors.Wrap(err, "find")
+	}
+	if fromLast {
+		lo.Reverse(nodes)
+	}
+	return nodes, nil
 }
 
 func NewKeysetFinder[T any](db *gorm.DB) cursor.KeysetFinder[T] {
 	return cursor.KeysetFinderFunc[T](func(ctx context.Context, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error) {
-		var nodes []T
-
 		if limit == 0 {
-			return nodes, nil
+			return []T{}, nil
 		}
 
 		db := db
@@ -133,13 +157,11 @@ func NewKeysetFinder[T any](db *gorm.DB) cursor.KeysetFinder[T] {
 			db = db.WithContext(ctx)
 		}
 
-		if err := db.Scopes(scopeKeyset(after, before, orderBys, limit, fromLast)).Find(&nodes).Error; err != nil {
-			return nil, errors.Wrap(err, "find")
+		nodes, err := findByKeyset[T](db, after, before, orderBys, limit, fromLast)
+		if err != nil {
+			return nil, err
 		}
 
-		if fromLast {
-			lo.Reverse(nodes) // TODO: should reverse in db query ?
-		}
 		return nodes, nil
 	})
 }
@@ -164,6 +186,10 @@ func (a *KeysetCounter[T]) Count(ctx context.Context) (int, error) {
 	db := a.db
 	if db.Statement.Context != ctx {
 		db = db.WithContext(ctx)
+	}
+	if db.Statement.Model == nil {
+		var t T
+		db = db.Model(t)
 	}
 
 	var totalCount int64

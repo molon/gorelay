@@ -1,9 +1,7 @@
-package cursor_test
+package gormrelay
 
 import (
 	"context"
-	"encoding/base64"
-	"strconv"
 	"testing"
 
 	"github.com/molon/gorelay/cursor"
@@ -12,20 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func toOffsetCursor(offset int) string {
-	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
-}
-
 func TestOffsetCursor(t *testing.T) {
 	resetDB(t)
 
 	defaultOrderBys := []pagination.OrderBy{
-		{Field: "createdAt", Desc: false},
+		{Field: "ID", Desc: false},
+		{Field: "Age", Desc: true},
 	}
 
 	applyCursorsFunc := func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
-		db := db.Model(&User{})
-		return cursor.NewGormOffsetAdapter[*User](db)(ctx, req)
+		return NewOffsetAdapter[*User](db)(ctx, req)
 	}
 
 	testCases := []struct {
@@ -35,8 +29,8 @@ func TestOffsetCursor(t *testing.T) {
 		applyCursorsFunc pagination.ApplyCursorsFunc[*User]
 		paginateRequest  *pagination.PaginateRequest[*User]
 		expectedEdgesLen int
-		expectedFirstKey string
-		expectedLastKey  string
+		expectedFirstKey int
+		expectedLastKey  int
 		expectedPageInfo *pagination.PageInfo
 		expectedError    string
 		expectedPanic    string
@@ -122,7 +116,7 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				After: lo.ToPtr(toOffsetCursor(-1)),
+				After: lo.ToPtr(cursor.EncodeOffsetCursor(-1)),
 			},
 			expectedError: "after < 0",
 		},
@@ -132,7 +126,7 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				Before: lo.ToPtr(toOffsetCursor(-1)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(-1)),
 			},
 			expectedError: "before < 0",
 		},
@@ -142,8 +136,8 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				After:  lo.ToPtr(toOffsetCursor(1)),
-				Before: lo.ToPtr(toOffsetCursor(1)),
+				After:  lo.ToPtr(cursor.EncodeOffsetCursor(1)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(1)),
 			},
 			expectedError: "after >= before",
 		},
@@ -158,30 +152,20 @@ func TestOffsetCursor(t *testing.T) {
 			expectedError: `decode offset cursor "invalid"`,
 		},
 		{
-			name:             "Invalid: invalid before",
-			limitIfNotSet:    10,
-			maxLimit:         20,
-			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
-				Before: lo.ToPtr("Y3Vyc29yOjI1Cg=="), // echo "cursor:25" | base64
-			},
-			expectedError: `parse offset cursor "Y3Vyc29yOjI1Cg=="`,
-		},
-		{
 			name:             "Limit if not set",
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest:  &pagination.PaginateRequest[*User]{},
 			expectedEdgesLen: 10,
-			expectedFirstKey: "id0",
-			expectedLastKey:  "id9",
+			expectedFirstKey: 0 + 1,
+			expectedLastKey:  9 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
-				StartCursor:     lo.ToPtr(toOffsetCursor(0)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(9)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(9)),
 			},
 		},
 		{
@@ -190,18 +174,18 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				After: lo.ToPtr(toOffsetCursor(0)),
+				After: lo.ToPtr(cursor.EncodeOffsetCursor(0)),
 				First: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedFirstKey: "id1",
-			expectedLastKey:  "id2",
+			expectedFirstKey: 1 + 1,
+			expectedLastKey:  2 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
-				StartCursor:     lo.ToPtr(toOffsetCursor(1)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(2)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(1)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(2)),
 			},
 		},
 		{
@@ -213,14 +197,14 @@ func TestOffsetCursor(t *testing.T) {
 				First: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedFirstKey: "id0",
-			expectedLastKey:  "id1",
+			expectedFirstKey: 0 + 1,
+			expectedLastKey:  1 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
-				StartCursor:     lo.ToPtr(toOffsetCursor(0)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(1)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(1)),
 			},
 		},
 		{
@@ -229,18 +213,18 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				Before: lo.ToPtr(toOffsetCursor(8)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(8)),
 				Last:   lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedFirstKey: "id6",
-			expectedLastKey:  "id7",
+			expectedFirstKey: 6 + 1,
+			expectedLastKey:  7 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
-				StartCursor:     lo.ToPtr(toOffsetCursor(6)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(7)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(6)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(7)),
 			},
 		},
 		{
@@ -249,19 +233,19 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				After:  lo.ToPtr(toOffsetCursor(0)),
-				Before: lo.ToPtr(toOffsetCursor(8)),
+				After:  lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(8)),
 				First:  lo.ToPtr(5),
 			},
 			expectedEdgesLen: 5,
-			expectedFirstKey: "id1",
-			expectedLastKey:  "id5",
+			expectedFirstKey: 1 + 1,
+			expectedLastKey:  5 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
-				StartCursor:     lo.ToPtr(toOffsetCursor(1)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(5)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(1)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(5)),
 			},
 		},
 		{
@@ -270,19 +254,19 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				After:  lo.ToPtr(toOffsetCursor(0)),
-				Before: lo.ToPtr(toOffsetCursor(4)),
+				After:  lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(4)),
 				First:  lo.ToPtr(8),
 			},
 			expectedEdgesLen: 3,
-			expectedFirstKey: "id1",
-			expectedLastKey:  "id3",
+			expectedFirstKey: 1 + 1,
+			expectedLastKey:  3 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
-				StartCursor:     lo.ToPtr(toOffsetCursor(1)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(3)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(1)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(3)),
 			},
 		},
 		{
@@ -291,7 +275,7 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				After: lo.ToPtr(toOffsetCursor(99)),
+				After: lo.ToPtr(cursor.EncodeOffsetCursor(99)),
 			},
 			expectedEdgesLen: 0,
 			expectedPageInfo: &pagination.PageInfo{
@@ -308,7 +292,7 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				Before: lo.ToPtr(toOffsetCursor(0)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(0)),
 			},
 			expectedEdgesLen: 0,
 			expectedPageInfo: &pagination.PageInfo{
@@ -328,14 +312,14 @@ func TestOffsetCursor(t *testing.T) {
 				First: lo.ToPtr(200),
 			},
 			expectedEdgesLen: 100,
-			expectedFirstKey: "id0",
-			expectedLastKey:  "id99",
+			expectedFirstKey: 0 + 1,
+			expectedLastKey:  99 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: false,
-				StartCursor:     lo.ToPtr(toOffsetCursor(0)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(99)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(99)),
 			},
 		},
 		{
@@ -378,18 +362,18 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				After: lo.ToPtr(toOffsetCursor(95)),
+				After: lo.ToPtr(cursor.EncodeOffsetCursor(95)),
 				First: lo.ToPtr(10),
 			},
 			expectedEdgesLen: 4,
-			expectedFirstKey: "id96",
-			expectedLastKey:  "id99",
+			expectedFirstKey: 96 + 1,
+			expectedLastKey:  99 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
-				StartCursor:     lo.ToPtr(toOffsetCursor(96)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(99)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(96)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(99)),
 			},
 		},
 		{
@@ -398,18 +382,18 @@ func TestOffsetCursor(t *testing.T) {
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				Before: lo.ToPtr(toOffsetCursor(4)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(4)),
 				Last:   lo.ToPtr(10),
 			},
 			expectedEdgesLen: 4,
-			expectedFirstKey: "id0",
-			expectedLastKey:  "id3",
+			expectedFirstKey: 0 + 1,
+			expectedLastKey:  3 + 1,
 			expectedPageInfo: &pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
-				StartCursor:     lo.ToPtr(toOffsetCursor(0)),
-				EndCursor:       lo.ToPtr(toOffsetCursor(3)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(3)),
 			},
 		},
 	}

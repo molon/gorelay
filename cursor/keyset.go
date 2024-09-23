@@ -31,7 +31,7 @@ func NewKeysetAdapter[T any](finder KeysetFinder[T]) pagination.ApplyCursorsFunc
 		}
 
 		var totalCount int
-		counter, ok := finder.(Counter[T])
+		counter, ok := finder.(Counter)
 		if ok {
 			var err error
 			totalCount, err = counter.Count(ctx)

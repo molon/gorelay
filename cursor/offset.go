@@ -2,7 +2,6 @@ package cursor
 
 import (
 	"context"
-	"encoding/base64"
 	"strconv"
 
 	"github.com/molon/gorelay/pagination"
@@ -10,33 +9,24 @@ import (
 )
 
 type OffsetFinder[T any] interface {
-	Find(ctx context.Context, skip, limit int) ([]T, error)
+	Find(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error)
 }
 
-type OffsetFinderFunc[T any] func(ctx context.Context, skip, limit int) ([]T, error)
+type OffsetFinderFunc[T any] func(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error)
 
-func (f OffsetFinderFunc[T]) Find(ctx context.Context, skip, limit int) ([]T, error) {
-	return f(ctx, skip, limit)
-}
-
-type OffsetParser interface {
-	Encode(ctx context.Context, offset int) (string, error)
-	Decode(ctx context.Context, cursor string) (int, error)
+func (f OffsetFinderFunc[T]) Find(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error) {
+	return f(ctx, orderBys, skip, limit)
 }
 
 func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc[T] {
 	return func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[T], error) {
-		parser, ok := finder.(OffsetParser)
-		if !ok {
-			parser = defaultOffsetParser
-		}
-		after, before, err := parseOffsetCursors[T](ctx, req, parser)
+		after, before, err := decodeOffsetCursors(req.After, req.Before)
 		if err != nil {
 			return nil, err
 		}
 
 		var totalCount int
-		counter, ok := finder.(Counter[T])
+		counter, ok := finder.(Counter)
 		if ok {
 			var err error
 			totalCount, err = counter.Count(ctx)
@@ -68,16 +58,13 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 		if limit <= 0 || (counter != nil && skip >= totalCount) {
 			edges = make([]pagination.Edge[T], 0)
 		} else {
-			nodes, err := finder.Find(ctx, skip, limit)
+			nodes, err := finder.Find(ctx, req.OrderBys, skip, limit)
 			if err != nil {
 				return nil, err
 			}
 			edges = make([]pagination.Edge[T], len(nodes))
 			for i, node := range nodes {
-				cursor, err := parser.Encode(ctx, skip+i)
-				if err != nil {
-					return nil, err
-				}
+				cursor := EncodeOffsetCursor(skip + i)
 				edges[i] = pagination.Edge[T]{
 					Node:   node,
 					Cursor: cursor,
@@ -104,51 +91,41 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 	}
 }
 
-type offsetParserImpl struct{}
+func EncodeOffsetCursor(offset int) string {
+	return strconv.Itoa(offset)
+}
 
-var defaultOffsetParser = &offsetParserImpl{}
-
-// TODO: 感觉应该这里返回 plain text ，然后 pagination 那边需要加密再加密？ 因为偶尔是返回 nodes 就好，并非所有都需要 cursor
-func (p *offsetParserImpl) Decode(_ context.Context, cursor string) (int, error) {
-	decoded, err := base64.StdEncoding.DecodeString(cursor)
+func DecodeOffsetCursor(cursor string) (int, error) {
+	offset, err := strconv.Atoi(cursor)
 	if err != nil {
-		// TODO:
 		return 0, errors.Wrapf(err, "decode offset cursor %q", cursor)
-	}
-	offset, err := strconv.Atoi(string(decoded))
-	if err != nil {
-		return 0, errors.Wrapf(err, "parse offset cursor %q", cursor)
 	}
 	return offset, nil
 }
 
-func (p *offsetParserImpl) Encode(_ context.Context, offset int) (string, error) {
-	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(offset))), nil
-}
-
-func parseOffsetCursors[T any](ctx context.Context, req *pagination.ApplyCursorsRequest, parser OffsetParser) (after, before *int, err error) {
-	if req.After != nil {
-		offset, err := parser.Decode(ctx, *req.After)
+func decodeOffsetCursors(after, before *string) (afterOffset, beforeOffset *int, err error) {
+	if after != nil {
+		offset, err := DecodeOffsetCursor(*after)
 		if err != nil {
 			return nil, nil, err
 		}
-		after = &offset
+		afterOffset = &offset
 	}
-	if req.Before != nil {
-		offset, err := parser.Decode(ctx, *req.Before)
+	if before != nil {
+		offset, err := DecodeOffsetCursor(*before)
 		if err != nil {
 			return nil, nil, err
 		}
-		before = &offset
+		beforeOffset = &offset
 	}
-	if after != nil && *after < 0 {
+	if afterOffset != nil && *afterOffset < 0 {
 		return nil, nil, errors.New("after < 0")
 	}
-	if before != nil && *before < 0 {
+	if beforeOffset != nil && *beforeOffset < 0 {
 		return nil, nil, errors.New("before < 0")
 	}
-	if after != nil && before != nil && *after >= *before {
+	if afterOffset != nil && before != nil && *afterOffset >= *beforeOffset {
 		return nil, nil, errors.New("after >= before")
 	}
-	return after, before, nil
+	return afterOffset, beforeOffset, nil
 }

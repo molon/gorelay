@@ -2,6 +2,6 @@ package cursor
 
 import "context"
 
-type Counter[T any] interface {
+type Counter interface {
 	Count(ctx context.Context) (int, error)
 }
