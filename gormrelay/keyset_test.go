@@ -2,12 +2,15 @@ package gormrelay
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"io"
 	"testing"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/molon/gorelay/cursor"
 	"github.com/molon/gorelay/pagination"
+	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
 	"github.com/theplant/testenv"
@@ -558,12 +561,12 @@ func TestKeysetCursor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.expectedPanic != "" {
 				require.PanicsWithValue(t, tc.expectedPanic, func() {
-					pagination.New(tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
+					pagination.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
 				})
 				return
 			}
 
-			p := pagination.New(tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
+			p := pagination.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
 			resp, err := p.Paginate(context.Background(), tc.paginateRequest)
 
 			if tc.expectedError != "" {
@@ -579,19 +582,42 @@ func TestKeysetCursor(t *testing.T) {
 	}
 }
 
+func TestKeysetWithoutCounter(t *testing.T) {
+	resetDB(t)
+
+	p := pagination.New(
+		false,
+		10, 10,
+		[]pagination.OrderBy{
+			{Field: "ID", Desc: false},
+		},
+		func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			return cursor.NewKeysetAdapter(NewKeysetFinder[*User](db))(ctx, req)
+		},
+	)
+	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		First: lo.ToPtr(10),
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Edges, 10)
+	require.Equal(t, 1, resp.Edges[0].Node.ID)
+	require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.ID)
+	require.Zero(t, resp.PageInfo.TotalCount)
+}
+
 func TestUnexpectOrderBys(t *testing.T) {
 	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
-		pagination.New(10, 10, nil, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		pagination.New(false, 10, 10, nil, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
 			return nil, nil
 		})
 	})
 	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
-		pagination.New(10, 10, []pagination.OrderBy{}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		pagination.New(false, 10, 10, []pagination.OrderBy{}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
 			return nil, nil
 		})
 	})
 
-	p := pagination.New(10, 10,
+	p := pagination.New(false, 10, 10,
 		[]pagination.OrderBy{
 			{Field: "ID", Desc: false},
 		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
@@ -615,10 +641,12 @@ func TestContext(t *testing.T) {
 	testCase := func(t *testing.T, f func(db *gorm.DB) pagination.ApplyCursorsFunc[*User]) {
 		{
 			p := pagination.New(
+				false,
 				10, 10,
 				[]pagination.OrderBy{
 					{Field: "ID", Desc: false},
-				}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+				},
+				func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
 					return f(db)(ctx, req)
 				},
 			)
@@ -633,6 +661,7 @@ func TestContext(t *testing.T) {
 
 		{
 			p := pagination.New(
+				false,
 				10, 10,
 				[]pagination.OrderBy{
 					{Field: "ID", Desc: false},
@@ -654,20 +683,141 @@ func TestContext(t *testing.T) {
 	t.Run("offset", func(t *testing.T) { testCase(t, NewOffsetAdapter) })
 }
 
-// func TestAny(t *testing.T) {
-// 	resetDB(t)
+func generateAESKey(length int) ([]byte, error) {
+	key := make([]byte, length)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
 
-// 	p := pagination.New(
-// 		10, 10,
-// 		[]pagination.OrderBy{
-// 			{Field: "ID", Desc: false},
-// 		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[any], error) {
-// 			return NewKeysetAdapter[any](db.Model(&User{}))(ctx, req)
-// 		},
-// 	)
-// 	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
-// 		First: lo.ToPtr(10),
-// 	})
-// 	require.NoError(t, err)
-// 	require.Len(t, resp.Edges, 10)
-// }
+func TestWrapEncrypt(t *testing.T) {
+	resetDB(t)
+
+	testCase := func(t *testing.T, w func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User]) {
+		p := pagination.New(
+			false,
+			10, 10,
+			[]pagination.OrderBy{
+				{Field: "ID", Desc: false},
+			},
+			func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+				return w(NewKeysetAdapter[*User](db))(ctx, req)
+			},
+		)
+		resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+			First: lo.ToPtr(10),
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Edges, 10)
+		require.Equal(t, 1, resp.Edges[0].Node.ID)
+		require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.ID)
+		require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
+		require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
+
+		// next page
+		resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+			First: lo.ToPtr(5),
+			After: resp.PageInfo.EndCursor,
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Edges, 5)
+		require.Equal(t, 11, resp.Edges[0].Node.ID)
+		require.Equal(t, 15, resp.Edges[len(resp.Edges)-1].Node.ID)
+		require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
+		require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
+
+		// prev page
+		resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+			Last:   lo.ToPtr(6),
+			Before: resp.PageInfo.StartCursor,
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Edges, 6)
+		require.Equal(t, 5, resp.Edges[0].Node.ID)
+		require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.ID)
+		require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
+		require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
+
+		// invalid after cursor
+		resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+			First: lo.ToPtr(5),
+			After: lo.ToPtr("invalid"),
+		})
+		require.ErrorContains(t, err, "invalid after cursor")
+		require.Nil(t, resp)
+	}
+
+	t.Run("WrapBase64", func(t *testing.T) {
+		testCase(t, func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User] {
+			return cursor.WrapBase64(next)
+		})
+	})
+	t.Run("WrapAES", func(t *testing.T) {
+		encryptionKey, err := generateAESKey(32)
+		require.NoError(t, err)
+		testCase(t, func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User] {
+			return cursor.WrapAES(next, encryptionKey)
+		})
+	})
+
+	t.Run("WrapMockError", func(t *testing.T) {
+		p := pagination.New(
+			false,
+			10, 10,
+			[]pagination.OrderBy{
+				{Field: "ID", Desc: false},
+			},
+			func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+				return func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User] {
+					return func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+						resp, err := next(ctx, req)
+						if err != nil {
+							return nil, err
+						}
+
+						for i := range resp.Edges {
+							edge := &resp.Edges[i]
+							edge.Cursor = func(ctx context.Context, node *User) (string, error) {
+								return "", errors.New("mock error")
+							}
+						}
+
+						return resp, nil
+					}
+				}(NewKeysetAdapter[*User](db))(ctx, req)
+			},
+		)
+		resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+			First: lo.ToPtr(10),
+		})
+		require.ErrorContains(t, err, "mock error")
+		require.Nil(t, resp)
+	})
+}
+
+func TestNodesOnly(t *testing.T) {
+	resetDB(t)
+
+	p := pagination.New(
+		true,
+		10, 10,
+		[]pagination.OrderBy{
+			{Field: "ID", Desc: false},
+		},
+		func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			return NewKeysetAdapter[*User](db)(ctx, req)
+		},
+	)
+	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		First: lo.ToPtr(10),
+	})
+	require.NoError(t, err)
+	require.Equal(t, 100, resp.PageInfo.TotalCount)
+	require.NotNil(t, resp.PageInfo.StartCursor)
+	require.NotNil(t, resp.PageInfo.EndCursor)
+	require.Len(t, resp.Edges, 0)
+	require.Len(t, resp.Nodes, 10)
+	require.Equal(t, 1, resp.Nodes[0].ID)
+	require.Equal(t, 10, resp.Nodes[len(resp.Nodes)-1].ID)
+}

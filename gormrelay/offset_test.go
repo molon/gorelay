@@ -152,6 +152,16 @@ func TestOffsetCursor(t *testing.T) {
 			expectedError: `decode offset cursor "invalid"`,
 		},
 		{
+			name:             "Invalid: invalid before",
+			limitIfNotSet:    10,
+			maxLimit:         20,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				Before: lo.ToPtr("invalid"),
+			},
+			expectedError: `decode offset cursor "invalid"`,
+		},
+		{
 			name:             "Limit if not set",
 			limitIfNotSet:    10,
 			maxLimit:         20,
@@ -403,12 +413,12 @@ func TestOffsetCursor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.expectedPanic != "" {
 				require.PanicsWithValue(t, tc.expectedPanic, func() {
-					pagination.New(tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
+					pagination.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
 				})
 				return
 			}
 
-			p := pagination.New(tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
+			p := pagination.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
 			resp, err := p.Paginate(context.Background(), tc.paginateRequest)
 
 			if tc.expectedError != "" {
@@ -428,4 +438,27 @@ func TestOffsetCursor(t *testing.T) {
 			require.Equal(t, tc.expectedPageInfo, resp.PageInfo)
 		})
 	}
+}
+
+func TestOffsetWithoutCounter(t *testing.T) {
+	resetDB(t)
+
+	p := pagination.New(
+		false,
+		10, 10,
+		[]pagination.OrderBy{
+			{Field: "ID", Desc: false},
+		},
+		func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			return cursor.NewOffsetAdapter(NewOffsetFinder[*User](db))(ctx, req)
+		},
+	)
+	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		First: lo.ToPtr(10),
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Edges, 10)
+	require.Equal(t, 1, resp.Edges[0].Node.ID)
+	require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.ID)
+	require.Zero(t, resp.PageInfo.TotalCount)
 }

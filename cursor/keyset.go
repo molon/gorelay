@@ -40,23 +40,23 @@ func NewKeysetAdapter[T any](finder KeysetFinder[T]) pagination.ApplyCursorsFunc
 			}
 		}
 
-		var edges []pagination.Edge[T]
+		cursorEncoder := func(_ context.Context, node T) (string, error) {
+			return EncodeKeysetCursor(node, keys)
+		}
+
+		var edges []pagination.LazyEdge[T]
 		if req.Limit <= 0 || (counter != nil && totalCount <= 0) {
-			edges = make([]pagination.Edge[T], 0)
+			edges = make([]pagination.LazyEdge[T], 0)
 		} else {
 			nodes, err := finder.Find(ctx, after, before, req.OrderBys, req.Limit, req.FromLast)
 			if err != nil {
 				return nil, err
 			}
-			edges = make([]pagination.Edge[T], len(nodes))
+			edges = make([]pagination.LazyEdge[T], len(nodes))
 			for i, node := range nodes {
-				cursor, err := EncodeKeysetCursor(node, keys)
-				if err != nil {
-					return nil, err
-				}
-				edges[i] = pagination.Edge[T]{
+				edges[i] = pagination.LazyEdge[T]{
 					Node:   node,
-					Cursor: cursor,
+					Cursor: cursorEncoder,
 				}
 			}
 		}

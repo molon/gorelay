@@ -34,7 +34,9 @@ type PageInfo struct {
 }
 
 type PaginateResponse[T any] struct {
-	Edges    []Edge[T] `json:"edges"`
+	Edges []Edge[T] `json:"edges,omitempty"`
+	// Sometimes we need nodes only
+	Nodes    []T       `json:"nodes,omitempty"`
 	PageInfo *PageInfo `json:"pageInfo"`
 }
 
@@ -48,7 +50,7 @@ func (f PaginationFunc[T]) Paginate(ctx context.Context, req *PaginateRequest[T]
 	return f(ctx, req)
 }
 
-func New[T any](maxLimit int, limitIfNotSet int, orderBysIfNotSet []OrderBy, applyCursorsFunc ApplyCursorsFunc[T]) Pagination[T] {
+func New[T any](nodesOnly bool, maxLimit int, limitIfNotSet int, orderBysIfNotSet []OrderBy, applyCursorsFunc ApplyCursorsFunc[T]) Pagination[T] {
 	if limitIfNotSet <= 0 {
 		panic("limitIfNotSet must be greater than 0")
 	}
@@ -91,11 +93,11 @@ func New[T any](maxLimit int, limitIfNotSet int, orderBysIfNotSet []OrderBy, app
 			}))
 		}
 
-		edges, pageInfo, err := EdgesToReturn(ctx, req.Before, req.After, first, last, orderBys, applyCursorsFunc)
+		edges, nodes, pageInfo, err := EdgesToReturn(ctx, req.Before, req.After, first, last, orderBys, nodesOnly, applyCursorsFunc)
 		if err != nil {
 			return nil, err
 		}
-		return &PaginateResponse[T]{Edges: edges, PageInfo: pageInfo}, nil
+		return &PaginateResponse[T]{Edges: edges, Nodes: nodes, PageInfo: pageInfo}, nil
 	})
 }
 
@@ -107,8 +109,13 @@ type ApplyCursorsRequest struct {
 	FromLast bool
 }
 
+type LazyEdge[T any] struct {
+	Node   T
+	Cursor func(ctx context.Context, node T) (string, error)
+}
+
 type ApplyCursorsResponse[T any] struct {
-	Edges              []Edge[T]
+	Edges              []LazyEdge[T]
 	TotalCount         int
 	HasBeforeOrNext    bool // `before` exists or it's next exists
 	HasAfterOrPrevious bool // `after` exists or it's previous exists
@@ -123,16 +130,17 @@ func EdgesToReturn[T any](
 	ctx context.Context,
 	before, after *string, first, last *int,
 	orderBys []OrderBy,
+	nodesOnly bool,
 	applyCursorsFunc ApplyCursorsFunc[T],
-) (edges []Edge[T], pageInfo *PageInfo, err error) {
+) (edges []Edge[T], nodes []T, pageInfo *PageInfo, err error) {
 	if first != nil && last != nil {
-		return nil, nil, errors.New("first and last cannot be used together")
+		return nil, nil, nil, errors.New("first and last cannot be used together")
 	}
 	if first != nil && *first < 0 {
-		return nil, nil, errors.New("first must be a non-negative integer")
+		return nil, nil, nil, errors.New("first must be a non-negative integer")
 	}
 	if last != nil && *last < 0 {
-		return nil, nil, errors.New("last must be a non-negative integer")
+		return nil, nil, nil, errors.New("last must be a non-negative integer")
 	}
 
 	var limit int
@@ -150,27 +158,40 @@ func EdgesToReturn[T any](
 		FromLast: last != nil,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	edges = result.Edges
+	lazyEdges := result.Edges
 
 	var hasPreviousPage, hasNextPage bool
 
-	if first != nil && len(edges) > *first {
-		edges = edges[:*first]
+	if first != nil && len(lazyEdges) > *first {
+		lazyEdges = lazyEdges[:*first]
 		hasNextPage = true
 	}
 	if before != nil && result.HasBeforeOrNext {
 		hasNextPage = true
 	}
 
-	if last != nil && len(edges) > *last {
-		edges = edges[len(edges)-*last:]
+	if last != nil && len(lazyEdges) > *last {
+		lazyEdges = lazyEdges[len(lazyEdges)-*last:]
 		hasPreviousPage = true
 	}
 	if after != nil && result.HasAfterOrPrevious {
 		hasPreviousPage = true
+	}
+
+	edges = make([]Edge[T], len(lazyEdges))
+	for i, lazyEdge := range lazyEdges {
+		if !nodesOnly || i == 0 || i == len(lazyEdges)-1 {
+			cursor, err := lazyEdge.Cursor(ctx, lazyEdge.Node)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			edges[i] = Edge[T]{Node: lazyEdge.Node, Cursor: cursor}
+		} else {
+			edges[i] = Edge[T]{Node: lazyEdge.Node, Cursor: ""}
+		}
 	}
 
 	pageInfo = &PageInfo{
@@ -184,5 +205,14 @@ func EdgesToReturn[T any](
 		endCursor := edges[len(edges)-1].Cursor
 		pageInfo.EndCursor = &endCursor
 	}
-	return edges, pageInfo, nil
+
+	if nodesOnly {
+		nodes = make([]T, len(lazyEdges))
+		for i, lazyEdge := range lazyEdges {
+			nodes[i] = lazyEdge.Node
+		}
+		return nil, nodes, pageInfo, nil
+	}
+
+	return edges, nil, pageInfo, nil
 }

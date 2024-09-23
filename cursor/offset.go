@@ -54,20 +54,22 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 			}
 		}
 
-		var edges []pagination.Edge[T]
+		var edges []pagination.LazyEdge[T]
 		if limit <= 0 || (counter != nil && skip >= totalCount) {
-			edges = make([]pagination.Edge[T], 0)
+			edges = make([]pagination.LazyEdge[T], 0)
 		} else {
 			nodes, err := finder.Find(ctx, req.OrderBys, skip, limit)
 			if err != nil {
 				return nil, err
 			}
-			edges = make([]pagination.Edge[T], len(nodes))
+			edges = make([]pagination.LazyEdge[T], len(nodes))
 			for i, node := range nodes {
-				cursor := EncodeOffsetCursor(skip + i)
-				edges[i] = pagination.Edge[T]{
-					Node:   node,
-					Cursor: cursor,
+				i := i
+				edges[i] = pagination.LazyEdge[T]{
+					Node: node,
+					Cursor: func(_ context.Context, _ T) (string, error) {
+						return EncodeOffsetCursor(skip + i), nil
+					},
 				}
 			}
 		}
