@@ -8,9 +8,8 @@ import (
 	"encoding/base64"
 	"io"
 
-	"github.com/molon/gorelay/pagination"
+	relay "github.com/molon/gorelay"
 	"github.com/pkg/errors"
-
 	"github.com/samber/lo"
 )
 
@@ -64,8 +63,8 @@ func decryptAES(cipherText string, key []byte) (string, error) {
 	return string(plainText), nil
 }
 
-func WrapAES[T any](next pagination.ApplyCursorsFunc[T], encryptionKey []byte) pagination.ApplyCursorsFunc[T] {
-	return func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[T], error) {
+func WrapAES[T any](next relay.ApplyCursorsFunc[T], encryptionKey []byte) relay.ApplyCursorsFunc[T] {
+	return func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[T], error) {
 		if req.After != nil {
 			decodedCursor, err := decryptAES(*req.After, encryptionKey)
 			if err != nil {

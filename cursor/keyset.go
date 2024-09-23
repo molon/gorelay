@@ -4,24 +4,24 @@ import (
 	"context"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/molon/gorelay/pagination"
+	relay "github.com/molon/gorelay"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 )
 
 type KeysetFinder[T any] interface {
-	Find(ctx context.Context, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error)
+	Find(ctx context.Context, after, before *map[string]any, orderBys []relay.OrderBy, limit int, fromLast bool) ([]T, error)
 }
 
-type KeysetFinderFunc[T any] func(ctx context.Context, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error)
+type KeysetFinderFunc[T any] func(ctx context.Context, after, before *map[string]any, orderBys []relay.OrderBy, limit int, fromLast bool) ([]T, error)
 
-func (f KeysetFinderFunc[T]) Find(ctx context.Context, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error) {
+func (f KeysetFinderFunc[T]) Find(ctx context.Context, after, before *map[string]any, orderBys []relay.OrderBy, limit int, fromLast bool) ([]T, error) {
 	return f(ctx, after, before, orderBys, limit, fromLast)
 }
 
-func NewKeysetAdapter[T any](finder KeysetFinder[T]) pagination.ApplyCursorsFunc[T] {
-	return func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[T], error) {
-		keys := lo.Map(req.OrderBys, func(item pagination.OrderBy, _ int) string {
+func NewKeysetAdapter[T any](finder KeysetFinder[T]) relay.ApplyCursorsFunc[T] {
+	return func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[T], error) {
+		keys := lo.Map(req.OrderBys, func(item relay.OrderBy, _ int) string {
 			return item.Field
 		})
 
@@ -44,24 +44,24 @@ func NewKeysetAdapter[T any](finder KeysetFinder[T]) pagination.ApplyCursorsFunc
 			return EncodeKeysetCursor(node, keys)
 		}
 
-		var edges []pagination.LazyEdge[T]
+		var edges []relay.LazyEdge[T]
 		if req.Limit <= 0 || (counter != nil && totalCount <= 0) {
-			edges = make([]pagination.LazyEdge[T], 0)
+			edges = make([]relay.LazyEdge[T], 0)
 		} else {
 			nodes, err := finder.Find(ctx, after, before, req.OrderBys, req.Limit, req.FromLast)
 			if err != nil {
 				return nil, err
 			}
-			edges = make([]pagination.LazyEdge[T], len(nodes))
+			edges = make([]relay.LazyEdge[T], len(nodes))
 			for i, node := range nodes {
-				edges[i] = pagination.LazyEdge[T]{
+				edges[i] = relay.LazyEdge[T]{
 					Node:   node,
 					Cursor: cursorEncoder,
 				}
 			}
 		}
 
-		resp := &pagination.ApplyCursorsResponse[T]{
+		resp := &relay.ApplyCursorsResponse[T]{
 			Edges:      edges,
 			TotalCount: totalCount,
 			// If we don't have a counter, it would be very costly to check whether after and before really exist,

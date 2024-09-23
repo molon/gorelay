@@ -4,8 +4,8 @@ import (
 	"context"
 	"reflect"
 
+	relay "github.com/molon/gorelay"
 	"github.com/molon/gorelay/cursor"
-	"github.com/molon/gorelay/pagination"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-func createWhereExpr(s *schema.Schema, orderBys []pagination.OrderBy, keyset map[string]any, reverse bool) (clause.Expression, error) {
+func createWhereExpr(s *schema.Schema, orderBys []relay.OrderBy, keyset map[string]any, reverse bool) (clause.Expression, error) {
 	ors := make([]clause.Expression, 0, len(orderBys))
 	eqs := make([]clause.Expression, 0, len(orderBys))
 	for i, orderBy := range orderBys {
@@ -94,7 +94,7 @@ func parseSchema(db *gorm.DB, v any) (*schema.Schema, error) {
 //		clause.Limit{Limit: &limit},
 //
 // )
-func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) func(db *gorm.DB) *gorm.DB {
+func scopeKeyset(after, before *map[string]any, orderBys []relay.OrderBy, limit int, fromLast bool) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		if db.Statement.Model == nil {
 			db.AddError(errors.New("model is nil"))
@@ -156,7 +156,7 @@ func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, l
 	}
 }
 
-func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error) {
+func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []relay.OrderBy, limit int, fromLast bool) ([]T, error) {
 	var nodes []T
 	if limit == 0 {
 		return nodes, nil
@@ -205,7 +205,7 @@ func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []
 }
 
 func NewKeysetFinder[T any](db *gorm.DB) cursor.KeysetFinder[T] {
-	return cursor.KeysetFinderFunc[T](func(ctx context.Context, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error) {
+	return cursor.KeysetFinderFunc[T](func(ctx context.Context, after, before *map[string]any, orderBys []relay.OrderBy, limit int, fromLast bool) ([]T, error) {
 		if limit == 0 {
 			return []T{}, nil
 		}
@@ -236,7 +236,7 @@ func NewKeysetCounter[T any](db *gorm.DB) *KeysetCounter[T] {
 	}
 }
 
-func (a *KeysetCounter[T]) Find(ctx context.Context, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error) {
+func (a *KeysetCounter[T]) Find(ctx context.Context, after, before *map[string]any, orderBys []relay.OrderBy, limit int, fromLast bool) ([]T, error) {
 	return a.finder.Find(ctx, after, before, orderBys, limit, fromLast)
 }
 
@@ -258,6 +258,6 @@ func (a *KeysetCounter[T]) Count(ctx context.Context) (int, error) {
 	return int(totalCount), nil
 }
 
-func NewKeysetAdapter[T any](db *gorm.DB) pagination.ApplyCursorsFunc[T] {
+func NewKeysetAdapter[T any](db *gorm.DB) relay.ApplyCursorsFunc[T] {
 	return cursor.NewKeysetAdapter(NewKeysetCounter[T](db))
 }

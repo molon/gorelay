@@ -4,15 +4,15 @@ import (
 	"context"
 	"reflect"
 
+	relay "github.com/molon/gorelay"
 	"github.com/molon/gorelay/cursor"
-	"github.com/molon/gorelay/pagination"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 func NewOffsetFinder[T any](db *gorm.DB) cursor.OffsetFinder[T] {
-	return cursor.OffsetFinderFunc[T](func(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error) {
+	return cursor.OffsetFinderFunc[T](func(ctx context.Context, orderBys []relay.OrderBy, skip, limit int) ([]T, error) {
 		var nodes []T
 
 		if limit == 0 {
@@ -103,7 +103,7 @@ func NewOffsetCounter[T any](db *gorm.DB) *OffsetCounter[T] {
 	}
 }
 
-func (a *OffsetCounter[T]) Find(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error) {
+func (a *OffsetCounter[T]) Find(ctx context.Context, orderBys []relay.OrderBy, skip, limit int) ([]T, error) {
 	return a.finder.Find(ctx, orderBys, skip, limit)
 }
 
@@ -125,6 +125,6 @@ func (a *OffsetCounter[T]) Count(ctx context.Context) (int, error) {
 	return int(totalCount), nil
 }
 
-func NewOffsetAdapter[T any](db *gorm.DB) pagination.ApplyCursorsFunc[T] {
+func NewOffsetAdapter[T any](db *gorm.DB) relay.ApplyCursorsFunc[T] {
 	return cursor.NewOffsetAdapter(NewOffsetCounter[T](db))
 }

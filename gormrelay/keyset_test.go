@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	jsoniter "github.com/json-iterator/go"
+	relay "github.com/molon/gorelay"
 	"github.com/molon/gorelay/cursor"
-	"github.com/molon/gorelay/pagination"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
@@ -76,7 +76,7 @@ func TestScopeKeyset(t *testing.T) {
 			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85},
 				nil,
-				[]pagination.OrderBy{
+				[]relay.OrderBy{
 					{Field: "Age", Desc: false},
 				},
 				10,
@@ -92,7 +92,7 @@ func TestScopeKeyset(t *testing.T) {
 			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85},
 				&map[string]interface{}{"Age": 88},
-				[]pagination.OrderBy{
+				[]relay.OrderBy{
 					{Field: "Age", Desc: false},
 				},
 				10,
@@ -108,7 +108,7 @@ func TestScopeKeyset(t *testing.T) {
 			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85, "Name": "name15"},
 				&map[string]interface{}{"Age": 88, "Name": "name12"},
-				[]pagination.OrderBy{
+				[]relay.OrderBy{
 					{Field: "Age", Desc: false},
 					{Field: "Name", Desc: true},
 				},
@@ -125,7 +125,7 @@ func TestScopeKeyset(t *testing.T) {
 			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85, "Name": "name15"},
 				&map[string]interface{}{"Age": 88, "Name": "name12"},
-				[]pagination.OrderBy{
+				[]relay.OrderBy{
 					{Field: "Age", Desc: false},
 					{Field: "Name", Desc: true},
 				},
@@ -144,7 +144,7 @@ func TestScopeKeyset(t *testing.T) {
 				Scopes(scopeKeyset(
 					&map[string]interface{}{"Age": 85, "Name": "name15"},
 					&map[string]interface{}{"Age": 88, "Name": "name12"},
-					[]pagination.OrderBy{
+					[]relay.OrderBy{
 						{Field: "Age", Desc: false},
 						{Field: "Name", Desc: true},
 					},
@@ -161,12 +161,12 @@ func TestScopeKeyset(t *testing.T) {
 func TestKeysetCursor(t *testing.T) {
 	resetDB(t)
 
-	defaultOrderBys := []pagination.OrderBy{
+	defaultOrderBys := []relay.OrderBy{
 		{Field: "ID", Desc: false},
 		{Field: "Age", Desc: true},
 	}
 	defaultOrderByKeys := []string{"ID", "Age"}
-	applyCursorsFunc := func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+	applyCursorsFunc := func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 		return NewKeysetAdapter[*User](db)(ctx, req)
 	}
 
@@ -174,10 +174,10 @@ func TestKeysetCursor(t *testing.T) {
 		name             string
 		limitIfNotSet    int
 		maxLimit         int
-		applyCursorsFunc pagination.ApplyCursorsFunc[*User]
-		paginateRequest  *pagination.PaginateRequest[*User]
+		applyCursorsFunc relay.ApplyCursorsFunc[*User]
+		paginateRequest  *relay.PaginateRequest[*User]
 		expectedEdgesLen int
-		expectedPageInfo pagination.PageInfo
+		expectedPageInfo relay.PageInfo
 		expectedError    string
 		expectedPanic    string
 	}{
@@ -186,7 +186,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(5),
 				Last:  lo.ToPtr(5),
 			},
@@ -197,7 +197,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(-5),
 			},
 			expectedError: "first must be a non-negative integer",
@@ -207,7 +207,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Last: lo.ToPtr(-5),
 			},
 			expectedError: "last must be a non-negative integer",
@@ -217,7 +217,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    0, // Assuming 0 indicates not set
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest:  &pagination.PaginateRequest[*User]{},
+			paginateRequest:  &relay.PaginateRequest[*User]{},
 			expectedPanic:    "limitIfNotSet must be greater than 0",
 		},
 		{
@@ -225,7 +225,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         8,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest:  &pagination.PaginateRequest[*User]{},
+			paginateRequest:  &relay.PaginateRequest[*User]{},
 			expectedPanic:    "maxLimit must be greater than or equal to limitIfNotSet",
 		},
 		{
@@ -233,7 +233,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: nil, // No ApplyCursorsFunc provided
-			paginateRequest:  &pagination.PaginateRequest[*User]{},
+			paginateRequest:  &relay.PaginateRequest[*User]{},
 			expectedPanic:    "applyCursorsFunc must be set",
 		},
 		{
@@ -241,7 +241,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(21),
 			},
 			expectedError: "first must be less than or equal to max limit",
@@ -251,7 +251,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Last: lo.ToPtr(21),
 			},
 			expectedError: "last must be less than or equal to max limit",
@@ -261,7 +261,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 9 + 1, Name: "name9", Age: 91}, defaultOrderByKeys,
 				)),
@@ -276,9 +276,9 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest:  &pagination.PaginateRequest[*User]{},
+			paginateRequest:  &relay.PaginateRequest[*User]{},
 			expectedEdgesLen: 10,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -295,14 +295,14 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
 				)),
 				First: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -319,11 +319,11 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -340,14 +340,14 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Before: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 18 + 1, Name: "name18", Age: 82}, defaultOrderByKeys,
 				)),
 				Last: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -364,11 +364,11 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Last: lo.ToPtr(10),
 			},
 			expectedEdgesLen: 10,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -385,7 +385,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
 				)),
@@ -395,7 +395,7 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(5),
 			},
 			expectedEdgesLen: 5,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -412,7 +412,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
 				)),
@@ -422,7 +422,7 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(8),
 			},
 			expectedEdgesLen: 3,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -439,7 +439,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
 				)),
@@ -449,7 +449,7 @@ func TestKeysetCursor(t *testing.T) {
 				Last: lo.ToPtr(5),
 			},
 			expectedEdgesLen: 5,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -466,7 +466,7 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
 				)),
@@ -476,7 +476,7 @@ func TestKeysetCursor(t *testing.T) {
 				Last: lo.ToPtr(8),
 			},
 			expectedEdgesLen: 3,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -493,13 +493,13 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 99 + 1, Name: "name99", Age: 1}, defaultOrderByKeys,
 				)),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -512,13 +512,13 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Before: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
 				)),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -531,11 +531,11 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         300,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(200),
 			},
 			expectedEdgesLen: 100,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: false,
@@ -552,11 +552,11 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         300,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Last: lo.ToPtr(200),
 			},
 			expectedEdgesLen: 100,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: false,
@@ -573,11 +573,11 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(0),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -590,11 +590,11 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Last: lo.ToPtr(0),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -607,14 +607,14 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				After: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 95 + 1, Name: "name95", Age: 5}, defaultOrderByKeys,
 				)),
 				First: lo.ToPtr(10),
 			},
 			expectedEdgesLen: 4,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -631,14 +631,14 @@ func TestKeysetCursor(t *testing.T) {
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
-			paginateRequest: &pagination.PaginateRequest[*User]{
+			paginateRequest: &relay.PaginateRequest[*User]{
 				Before: lo.ToPtr(mustEncodeKeysetCursor(
 					&User{ID: 4 + 1, Name: "name4", Age: 96}, defaultOrderByKeys,
 				)),
 				Last: lo.ToPtr(10),
 			},
 			expectedEdgesLen: 4,
-			expectedPageInfo: pagination.PageInfo{
+			expectedPageInfo: relay.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -657,12 +657,12 @@ func TestKeysetCursor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.expectedPanic != "" {
 				require.PanicsWithValue(t, tc.expectedPanic, func() {
-					pagination.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
+					relay.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
 				})
 				return
 			}
 
-			p := pagination.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
+			p := relay.New(false, tc.maxLimit, tc.limitIfNotSet, defaultOrderBys, tc.applyCursorsFunc)
 			resp, err := p.Paginate(context.Background(), tc.paginateRequest)
 
 			if tc.expectedError != "" {
@@ -681,17 +681,17 @@ func TestKeysetCursor(t *testing.T) {
 func TestKeysetWithoutCounter(t *testing.T) {
 	resetDB(t)
 
-	p := pagination.New(
+	p := relay.New(
 		false,
 		10, 10,
-		[]pagination.OrderBy{
+		[]relay.OrderBy{
 			{Field: "ID", Desc: false},
 		},
-		func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 			return cursor.NewKeysetAdapter(NewKeysetFinder[*User](db))(ctx, req)
 		},
 	)
-	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+	resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 		First: lo.ToPtr(10),
 	})
 	require.NoError(t, err)
@@ -703,26 +703,26 @@ func TestKeysetWithoutCounter(t *testing.T) {
 
 func TestUnexpectOrderBys(t *testing.T) {
 	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
-		pagination.New(false, 10, 10, nil, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		relay.New(false, 10, 10, nil, func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 			return nil, nil
 		})
 	})
 	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
-		pagination.New(false, 10, 10, []pagination.OrderBy{}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		relay.New(false, 10, 10, []relay.OrderBy{}, func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 			return nil, nil
 		})
 	})
 
-	p := pagination.New(false, 10, 10,
-		[]pagination.OrderBy{
+	p := relay.New(false, 10, 10,
+		[]relay.OrderBy{
 			{Field: "ID", Desc: false},
-		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		}, func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 			return nil, nil
 		},
 	)
-	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+	resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 		First: lo.ToPtr(10),
-		OrderBys: []pagination.OrderBy{
+		OrderBys: []relay.OrderBy{
 			{Field: "ID", Desc: false},
 			{Field: "ID", Desc: true},
 		},
@@ -734,21 +734,21 @@ func TestUnexpectOrderBys(t *testing.T) {
 func TestContext(t *testing.T) {
 	resetDB(t)
 
-	testCase := func(t *testing.T, f func(db *gorm.DB) pagination.ApplyCursorsFunc[*User]) {
+	testCase := func(t *testing.T, f func(db *gorm.DB) relay.ApplyCursorsFunc[*User]) {
 		{
-			p := pagination.New(
+			p := relay.New(
 				false,
 				10, 10,
-				[]pagination.OrderBy{
+				[]relay.OrderBy{
 					{Field: "ID", Desc: false},
 				},
-				func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+				func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 					return f(db)(ctx, req)
 				},
 			)
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
+			resp, err := p.Paginate(ctx, &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(10),
 			})
 			require.ErrorContains(t, err, "context canceled")
@@ -756,19 +756,19 @@ func TestContext(t *testing.T) {
 		}
 
 		{
-			p := pagination.New(
+			p := relay.New(
 				false,
 				10, 10,
-				[]pagination.OrderBy{
+				[]relay.OrderBy{
 					{Field: "ID", Desc: false},
-				}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+				}, func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 					// Set WithContext here
 					return f(db.WithContext(ctx))(ctx, req)
 				},
 			)
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
+			resp, err := p.Paginate(ctx, &relay.PaginateRequest[*User]{
 				First: lo.ToPtr(10),
 			})
 			require.ErrorContains(t, err, "context canceled")
@@ -790,18 +790,18 @@ func generateAESKey(length int) ([]byte, error) {
 func TestWrapEncrypt(t *testing.T) {
 	resetDB(t)
 
-	testCase := func(t *testing.T, w func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User]) {
-		p := pagination.New(
+	testCase := func(t *testing.T, w func(next relay.ApplyCursorsFunc[*User]) relay.ApplyCursorsFunc[*User]) {
+		p := relay.New(
 			false,
 			10, 10,
-			[]pagination.OrderBy{
+			[]relay.OrderBy{
 				{Field: "ID", Desc: false},
 			},
-			func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 				return w(NewKeysetAdapter[*User](db))(ctx, req)
 			},
 		)
-		resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 			First: lo.ToPtr(10),
 		})
 		require.NoError(t, err)
@@ -812,7 +812,7 @@ func TestWrapEncrypt(t *testing.T) {
 		require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
 
 		// next page
-		resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		resp, err = p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 			First: lo.ToPtr(5),
 			After: resp.PageInfo.EndCursor,
 		})
@@ -824,7 +824,7 @@ func TestWrapEncrypt(t *testing.T) {
 		require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
 
 		// prev page
-		resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		resp, err = p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 			Last:   lo.ToPtr(6),
 			Before: resp.PageInfo.StartCursor,
 		})
@@ -836,7 +836,7 @@ func TestWrapEncrypt(t *testing.T) {
 		require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
 
 		// invalid after cursor
-		resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		resp, err = p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 			First: lo.ToPtr(5),
 			After: lo.ToPtr("invalid"),
 		})
@@ -845,28 +845,28 @@ func TestWrapEncrypt(t *testing.T) {
 	}
 
 	t.Run("WrapBase64", func(t *testing.T) {
-		testCase(t, func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User] {
+		testCase(t, func(next relay.ApplyCursorsFunc[*User]) relay.ApplyCursorsFunc[*User] {
 			return cursor.WrapBase64(next)
 		})
 	})
 	t.Run("WrapAES", func(t *testing.T) {
 		encryptionKey, err := generateAESKey(32)
 		require.NoError(t, err)
-		testCase(t, func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User] {
+		testCase(t, func(next relay.ApplyCursorsFunc[*User]) relay.ApplyCursorsFunc[*User] {
 			return cursor.WrapAES(next, encryptionKey)
 		})
 	})
 
 	t.Run("WrapMockError", func(t *testing.T) {
-		p := pagination.New(
+		p := relay.New(
 			false,
 			10, 10,
-			[]pagination.OrderBy{
+			[]relay.OrderBy{
 				{Field: "ID", Desc: false},
 			},
-			func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
-				return func(next pagination.ApplyCursorsFunc[*User]) pagination.ApplyCursorsFunc[*User] {
-					return func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+			func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
+				return func(next relay.ApplyCursorsFunc[*User]) relay.ApplyCursorsFunc[*User] {
+					return func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 						resp, err := next(ctx, req)
 						if err != nil {
 							return nil, err
@@ -884,7 +884,7 @@ func TestWrapEncrypt(t *testing.T) {
 				}(NewKeysetAdapter[*User](db))(ctx, req)
 			},
 		)
-		resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+		resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 			First: lo.ToPtr(10),
 		})
 		require.ErrorContains(t, err, "mock error")
@@ -895,17 +895,17 @@ func TestWrapEncrypt(t *testing.T) {
 func TestNodesOnly(t *testing.T) {
 	resetDB(t)
 
-	p := pagination.New(
+	p := relay.New(
 		true,
 		10, 10,
-		[]pagination.OrderBy{
+		[]relay.OrderBy{
 			{Field: "ID", Desc: false},
 		},
-		func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[*User], error) {
 			return NewKeysetAdapter[*User](db)(ctx, req)
 		},
 	)
-	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[*User]{
+	resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[*User]{
 		First: lo.ToPtr(10),
 	})
 	require.NoError(t, err)
@@ -921,17 +921,17 @@ func TestNodesOnly(t *testing.T) {
 func TestKeysetGenericTypeAny(t *testing.T) {
 	resetDB(t)
 
-	p := pagination.New(
+	p := relay.New(
 		false,
 		10, 10,
-		[]pagination.OrderBy{
+		[]relay.OrderBy{
 			{Field: "ID", Desc: false},
-		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[any], error) {
+		}, func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[any], error) {
 			// This is a generic(T: any) function, so we need to cast the model to the correct type
 			return NewKeysetAdapter[any](db.Model(&User{}))(ctx, req)
 		},
 	)
-	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
+	resp, err := p.Paginate(context.Background(), &relay.PaginateRequest[any]{
 		First: lo.ToPtr(10),
 	})
 	require.NoError(t, err)
@@ -942,7 +942,7 @@ func TestKeysetGenericTypeAny(t *testing.T) {
 	require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
 	require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
 
-	resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
+	resp, err = p.Paginate(context.Background(), &relay.PaginateRequest[any]{
 		Last: lo.ToPtr(10),
 	})
 	require.NoError(t, err)

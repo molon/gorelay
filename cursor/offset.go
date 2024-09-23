@@ -4,22 +4,24 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/molon/gorelay/pagination"
+	relay "github.com/molon/gorelay"
 	"github.com/pkg/errors"
 )
 
 type OffsetFinder[T any] interface {
-	Find(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error)
+	Find(ctx context.Context, orderBys []relay.OrderBy, skip, limit int) ([]T, error)
 }
 
-type OffsetFinderFunc[T any] func(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error)
+type OffsetFinderFunc[T any] func(ctx context.Context, orderBys []relay.OrderBy, skip, limit int) ([]T, error)
 
-func (f OffsetFinderFunc[T]) Find(ctx context.Context, orderBys []pagination.OrderBy, skip, limit int) ([]T, error) {
+func (f OffsetFinderFunc[T]) Find(ctx context.Context, orderBys []relay.OrderBy, skip, limit int) ([]T, error) {
 	return f(ctx, orderBys, skip, limit)
 }
 
-func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc[T] {
-	return func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[T], error) {
+// NewOffsetAdapter creates a relay.ApplyCursorsFunc from an OffsetFinder.
+// If you want to use `last!=nil&&before==nil`, the finder must implement Counter.
+func NewOffsetAdapter[T any](finder OffsetFinder[T]) relay.ApplyCursorsFunc[T] {
+	return func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[T], error) {
 		after, before, err := decodeOffsetCursors(req.After, req.Before)
 		if err != nil {
 			return nil, err
@@ -64,18 +66,18 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 			}
 		}
 
-		var edges []pagination.LazyEdge[T]
+		var edges []relay.LazyEdge[T]
 		if limit <= 0 || (hasCounter && (skip >= totalCount || totalCount == 0)) {
-			edges = make([]pagination.LazyEdge[T], 0)
+			edges = make([]relay.LazyEdge[T], 0)
 		} else {
 			nodes, err := finder.Find(ctx, req.OrderBys, skip, limit)
 			if err != nil {
 				return nil, err
 			}
-			edges = make([]pagination.LazyEdge[T], len(nodes))
+			edges = make([]relay.LazyEdge[T], len(nodes))
 			for i, node := range nodes {
 				i := i
-				edges[i] = pagination.LazyEdge[T]{
+				edges[i] = relay.LazyEdge[T]{
 					Node: node,
 					Cursor: func(_ context.Context, _ T) (string, error) {
 						return EncodeOffsetCursor(skip + i), nil
@@ -84,7 +86,7 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 			}
 		}
 
-		resp := &pagination.ApplyCursorsResponse[T]{
+		resp := &relay.ApplyCursorsResponse[T]{
 			Edges:      edges,
 			TotalCount: totalCount,
 		}

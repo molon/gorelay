@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 
+	relay "github.com/molon/gorelay"
 	"github.com/pkg/errors"
-
-	"github.com/molon/gorelay/pagination"
 	"github.com/samber/lo"
 )
 
-func WrapBase64[T any](next pagination.ApplyCursorsFunc[T]) pagination.ApplyCursorsFunc[T] {
-	return func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[T], error) {
+func WrapBase64[T any](next relay.ApplyCursorsFunc[T]) relay.ApplyCursorsFunc[T] {
+	return func(ctx context.Context, req *relay.ApplyCursorsRequest) (*relay.ApplyCursorsResponse[T], error) {
 		if req.After != nil {
 			cursor, err := base64.StdEncoding.DecodeString(*req.After)
 			if err != nil {
