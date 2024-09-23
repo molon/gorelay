@@ -6,7 +6,6 @@ import (
 	"github.com/molon/gorelay/cursor"
 	"github.com/molon/gorelay/pagination"
 	"github.com/pkg/errors"
-	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -24,17 +23,30 @@ func NewOffsetFinder[T any](db *gorm.DB) cursor.OffsetFinder[T] {
 			db = db.WithContext(ctx)
 		}
 
+		if db.Statement.Model == nil {
+			var t T
+			db = db.Model(t)
+		}
+
 		if skip > 0 {
 			db = db.Offset(skip)
 		}
 
 		if len(orderBys) > 0 {
+			s, err := parseSchema(db, db.Statement.Model)
+			if err != nil {
+				return nil, errors.Wrap(err, "parse schema")
+			}
+
 			orderByColumns := make([]clause.OrderByColumn, 0, len(orderBys))
 			for _, orderBy := range orderBys {
-				// TODO: should use gorm schema to convert column name
-				column := lo.SnakeCase(orderBy.Field)
+				field, ok := s.FieldsByName[orderBy.Field]
+				if !ok {
+					return nil, errors.Errorf("missing field %q in schema", orderBy.Field)
+				}
+
 				orderByColumns = append(orderByColumns, clause.OrderByColumn{
-					Column: clause.Column{Name: column},
+					Column: clause.Column{Name: field.DBName},
 					Desc:   orderBy.Desc,
 				})
 			}
@@ -69,6 +81,7 @@ func (a *OffsetCounter[T]) Count(ctx context.Context) (int, error) {
 	if db.Statement.Context != ctx {
 		db = db.WithContext(ctx)
 	}
+
 	if db.Statement.Model == nil {
 		var t T
 		db = db.Model(t)

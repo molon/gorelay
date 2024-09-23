@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/molon/gorelay/cursor"
 	"github.com/molon/gorelay/pagination"
@@ -72,7 +71,7 @@ func mustEncodeKeysetCursor[T any](node T, keys []string) string {
 func TestScopeKeyset(t *testing.T) {
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
-			tx = tx.Scopes(scopeKeyset(
+			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85},
 				nil,
 				[]pagination.OrderBy{
@@ -88,7 +87,7 @@ func TestScopeKeyset(t *testing.T) {
 	}
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
-			tx = tx.Scopes(scopeKeyset(
+			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85},
 				&map[string]interface{}{"Age": 88},
 				[]pagination.OrderBy{
@@ -104,7 +103,7 @@ func TestScopeKeyset(t *testing.T) {
 	}
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
-			tx = tx.Scopes(scopeKeyset(
+			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85, "Name": "name15"},
 				&map[string]interface{}{"Age": 88, "Name": "name12"},
 				[]pagination.OrderBy{
@@ -121,7 +120,7 @@ func TestScopeKeyset(t *testing.T) {
 	}
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
-			tx = tx.Scopes(scopeKeyset(
+			tx = tx.Model(&User{}).Scopes(scopeKeyset(
 				&map[string]interface{}{"Age": 85, "Name": "name15"},
 				&map[string]interface{}{"Age": 88, "Name": "name12"},
 				[]pagination.OrderBy{
@@ -139,7 +138,7 @@ func TestScopeKeyset(t *testing.T) {
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
 			// with extra where
-			tx = tx.Where("name LIKE ?", "name%").
+			tx = tx.Model(&User{}).Where("name LIKE ?", "name%").
 				Scopes(scopeKeyset(
 					&map[string]interface{}{"Age": 85, "Name": "name15"},
 					&map[string]interface{}{"Age": 88, "Name": "name12"},
@@ -583,12 +582,12 @@ func TestKeysetCursor(t *testing.T) {
 
 func TestUnexpectOrderBys(t *testing.T) {
 	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
-		pagination.New[*User](10, 10, nil, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		pagination.New(10, 10, nil, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
 			return nil, nil
 		})
 	})
 	require.PanicsWithValue(t, "orderBysIfNotSet must be set", func() {
-		pagination.New[*User](10, 10, []pagination.OrderBy{}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+		pagination.New(10, 10, []pagination.OrderBy{}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
 			return nil, nil
 		})
 	})
@@ -614,40 +613,44 @@ func TestUnexpectOrderBys(t *testing.T) {
 func TestContext(t *testing.T) {
 	resetDB(t)
 
-	{
-		p := pagination.New(
-			10, 10,
-			[]pagination.OrderBy{
-				{Field: "ID", Desc: false},
-			}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
-				return NewKeysetAdapter[*User](db)(ctx, req)
-			},
-		)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-		defer cancel()
-		resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
-			First: lo.ToPtr(10),
-		})
-		require.ErrorContains(t, err, "context deadline exceeded")
-		require.Nil(t, resp)
-	}
+	testCase := func(t *testing.T, f func(db *gorm.DB) pagination.ApplyCursorsFunc[*User]) {
+		{
+			p := pagination.New(
+				10, 10,
+				[]pagination.OrderBy{
+					{Field: "ID", Desc: false},
+				}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+					return f(db)(ctx, req)
+				},
+			)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
+				First: lo.ToPtr(10),
+			})
+			require.ErrorContains(t, err, "context canceled")
+			require.Nil(t, resp)
+		}
 
-	{
-		p := pagination.New(
-			10, 10,
-			[]pagination.OrderBy{
-				{Field: "ID", Desc: false},
-			}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
-				// Set WithContext here
-				return NewKeysetAdapter[*User](db.WithContext(ctx))(ctx, req)
-			},
-		)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-		defer cancel()
-		resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
-			First: lo.ToPtr(10),
-		})
-		require.ErrorContains(t, err, "context deadline exceeded")
-		require.Nil(t, resp)
+		{
+			p := pagination.New(
+				10, 10,
+				[]pagination.OrderBy{
+					{Field: "ID", Desc: false},
+				}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[*User], error) {
+					// Set WithContext here
+					return f(db.WithContext(ctx))(ctx, req)
+				},
+			)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			resp, err := p.Paginate(ctx, &pagination.PaginateRequest[*User]{
+				First: lo.ToPtr(10),
+			})
+			require.ErrorContains(t, err, "context canceled")
+			require.Nil(t, resp)
+		}
 	}
+	t.Run("keyset", func(t *testing.T) { testCase(t, NewKeysetAdapter) })
+	t.Run("offset", func(t *testing.T) { testCase(t, NewOffsetAdapter) })
 }

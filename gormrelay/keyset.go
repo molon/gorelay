@@ -9,9 +9,10 @@ import (
 	"github.com/samber/lo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/schema"
 )
 
-func createWhereExpr(orderBys []pagination.OrderBy, keyset map[string]any, reverse bool) (clause.Expression, error) {
+func createWhereExpr(s *schema.Schema, orderBys []pagination.OrderBy, keyset map[string]any, reverse bool) (clause.Expression, error) {
 	ors := make([]clause.Expression, 0, len(orderBys))
 	eqs := make([]clause.Expression, 0, len(orderBys))
 	for i, orderBy := range orderBys {
@@ -20,8 +21,10 @@ func createWhereExpr(orderBys []pagination.OrderBy, keyset map[string]any, rever
 			return nil, errors.Errorf("missing field %q in keyset", orderBy.Field)
 		}
 
-		// TODO: should use gorm schema to convert column name
-		column := lo.SnakeCase(orderBy.Field)
+		field, ok := s.FieldsByName[orderBy.Field]
+		if !ok {
+			return nil, errors.Errorf("missing field %q in schema", orderBy.Field)
+		}
 
 		desc := orderBy.Desc
 		if reverse {
@@ -30,9 +33,9 @@ func createWhereExpr(orderBys []pagination.OrderBy, keyset map[string]any, rever
 
 		var expr clause.Expression
 		if desc {
-			expr = clause.Lt{Column: column, Value: v}
+			expr = clause.Lt{Column: field.DBName, Value: v}
 		} else {
-			expr = clause.Gt{Column: column, Value: v}
+			expr = clause.Gt{Column: field.DBName, Value: v}
 		}
 
 		ands := make([]clause.Expression, len(eqs)+1)
@@ -41,10 +44,18 @@ func createWhereExpr(orderBys []pagination.OrderBy, keyset map[string]any, rever
 		ors = append(ors, clause.And(ands...))
 
 		if i < len(orderBys)-1 {
-			eqs = append(eqs, clause.Eq{Column: column, Value: v})
+			eqs = append(eqs, clause.Eq{Column: field.DBName, Value: v})
 		}
 	}
 	return clause.And(clause.Or(ors...)), nil
+}
+
+func parseSchema(db *gorm.DB, v any) (*schema.Schema, error) {
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(v); err != nil {
+		return nil, errors.Wrap(err, "parse schema with db")
+	}
+	return stmt.Schema, nil
 }
 
 // Example:
@@ -84,10 +95,21 @@ func createWhereExpr(orderBys []pagination.OrderBy, keyset map[string]any, rever
 // )
 func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
+		if db.Statement.Model == nil {
+			db.AddError(errors.New("model is nil"))
+			return db
+		}
+
+		s, err := parseSchema(db, db.Statement.Model)
+		if err != nil {
+			db.AddError(errors.Wrap(err, "parse schema"))
+			return db
+		}
+
 		var exprs []clause.Expression
 
 		if after != nil {
-			expr, err := createWhereExpr(orderBys, *after, false)
+			expr, err := createWhereExpr(s, orderBys, *after, false)
 			if err != nil {
 				db.AddError(err)
 				return db
@@ -96,7 +118,7 @@ func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, l
 		}
 
 		if before != nil {
-			expr, err := createWhereExpr(orderBys, *before, true)
+			expr, err := createWhereExpr(s, orderBys, *before, true)
 			if err != nil {
 				db.AddError(err)
 				return db
@@ -107,15 +129,18 @@ func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, l
 		if len(orderBys) > 0 {
 			orderByColumns := make([]clause.OrderByColumn, 0, len(orderBys))
 			for _, orderBy := range orderBys {
-				// TODO: should use gorm schema to convert column name
-				column := lo.SnakeCase(orderBy.Field)
+				field, ok := s.FieldsByName[orderBy.Field]
+				if !ok {
+					db.AddError(errors.Errorf("missing field %q in schema", orderBy.Field))
+					return db
+				}
 
 				desc := orderBy.Desc
 				if fromLast {
 					desc = !desc
 				}
 				orderByColumns = append(orderByColumns, clause.OrderByColumn{
-					Column: clause.Column{Name: column},
+					Column: clause.Column{Name: field.DBName},
 					Desc:   desc,
 				})
 			}
@@ -134,6 +159,11 @@ func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []
 	var nodes []T
 	if limit == 0 {
 		return nodes, nil
+	}
+
+	if db.Statement.Model == nil {
+		var t T
+		db = db.Model(t)
 	}
 
 	err := db.Scopes(scopeKeyset(after, before, orderBys, limit, fromLast)).Find(&nodes).Error
@@ -187,6 +217,7 @@ func (a *KeysetCounter[T]) Count(ctx context.Context) (int, error) {
 	if db.Statement.Context != ctx {
 		db = db.WithContext(ctx)
 	}
+
 	if db.Statement.Model == nil {
 		var t T
 		db = db.Model(t)
