@@ -2,8 +2,8 @@ package cursor
 
 import (
 	"context"
-	"encoding/json"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/molon/gorelay/pagination"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
@@ -73,16 +73,24 @@ func NewKeysetAdapter[T any](finder KeysetFinder[T]) pagination.ApplyCursorsFunc
 	}
 }
 
+// use strcut field name as key and force emit empty
+var jsoniterForKeyset = jsoniter.Config{
+	EscapeHTML:             true,
+	SortMapKeys:            true,
+	ValidateJsonRawMessage: true,
+	TagKey:                 "__gorelay_dummy__",
+}.Froze()
+
 func EncodeKeysetCursor[T any](node T, keys []string) (string, error) {
-	b, err := json.Marshal(node)
+	b, err := jsoniterForKeyset.Marshal(node)
 	if err != nil {
 		return "", errors.Wrap(err, "marshal cursor")
 	}
 	m := make(map[string]any)
-	if err := json.Unmarshal(b, &m); err != nil {
+	if err := jsoniterForKeyset.Unmarshal(b, &m); err != nil {
 		return "", errors.Wrap(err, "unmarshal cursor")
 	}
-	b, err = json.Marshal(lo.PickByKeys(m, keys))
+	b, err = jsoniterForKeyset.Marshal(lo.PickByKeys(m, keys))
 	if err != nil {
 		return "", errors.Wrap(err, "marshal filtered cursor")
 	}
@@ -91,13 +99,12 @@ func EncodeKeysetCursor[T any](node T, keys []string) (string, error) {
 
 func DecodeKeysetCursor[T any](cursor string, keys []string) (map[string]any, error) {
 	var m map[string]any
-	if err := json.Unmarshal([]byte(cursor), &m); err != nil {
+	if err := jsoniterForKeyset.Unmarshal([]byte(cursor), &m); err != nil {
 		return nil, errors.Wrap(err, "unmarshal cursor")
 	}
 	if len(m) != len(keys) {
 		return nil, errors.New("cursor length != keys length")
 	}
-	// TODO: omitempty not supported now
 	for _, key := range keys {
 		if _, ok := m[key]; !ok {
 			return nil, errors.Errorf("key %q not found in cursor", key)
@@ -107,7 +114,6 @@ func DecodeKeysetCursor[T any](cursor string, keys []string) (map[string]any, er
 }
 
 func decodeKeysetCursors[T any](after, before *string, keys []string) (afterKeyset, beforeKeyset *map[string]any, err error) {
-	// TODO: should more strict ?
 	if after != nil && before != nil && *after == *before {
 		return nil, nil, errors.New("after == before")
 	}

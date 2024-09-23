@@ -2,14 +2,13 @@ package gormrelay
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"testing"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/molon/gorelay/cursor"
 	"github.com/molon/gorelay/pagination"
 	"github.com/samber/lo"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/theplant/testenv"
 	"gorm.io/gorm"
@@ -47,13 +46,13 @@ func resetDB(t *testing.T) {
 }
 
 type User struct {
-	ID   int    `gorm:"primarykey;not null;"`
-	Name string `gorm:"not null;"`
-	Age  int    `gorm:"index;not null;"`
+	ID   int    `gorm:"primarykey;not null;" json:"id"`
+	Name string `gorm:"not null;" json:"name"`
+	Age  int    `gorm:"index;not null;" json:"age"`
 }
 
 func MustJsonString(v any) string {
-	s, err := json.Marshal(v)
+	s, err := jsoniter.Marshal(v)
 	if err != nil {
 		panic(err)
 	}
@@ -83,7 +82,7 @@ func TestScopeKeyset(t *testing.T) {
 			require.NoError(t, tx.Error)
 			return tx
 		})
-		assert.Equal(t, `SELECT * FROM "users" WHERE "age" > 85 ORDER BY "age" LIMIT 10`, sql)
+		require.Equal(t, `SELECT * FROM "users" WHERE "age" > 85 ORDER BY "age" LIMIT 10`, sql)
 	}
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
@@ -99,7 +98,7 @@ func TestScopeKeyset(t *testing.T) {
 			require.NoError(t, tx.Error)
 			return tx
 		})
-		assert.Equal(t, `SELECT * FROM "users" WHERE "age" > 85 AND "age" < 88 ORDER BY "age" LIMIT 10`, sql)
+		require.Equal(t, `SELECT * FROM "users" WHERE "age" > 85 AND "age" < 88 ORDER BY "age" LIMIT 10`, sql)
 	}
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
@@ -116,7 +115,7 @@ func TestScopeKeyset(t *testing.T) {
 			require.NoError(t, tx.Error)
 			return tx
 		})
-		assert.Equal(t, `SELECT * FROM "users" WHERE ("age" > 85 OR ("age" = 85 AND "name" < 'name15')) AND ("age" < 88 OR ("age" = 88 AND "name" > 'name12')) ORDER BY "age","name" DESC LIMIT 10`, sql)
+		require.Equal(t, `SELECT * FROM "users" WHERE ("age" > 85 OR ("age" = 85 AND "name" < 'name15')) AND ("age" < 88 OR ("age" = 88 AND "name" > 'name12')) ORDER BY "age","name" DESC LIMIT 10`, sql)
 	}
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
@@ -133,7 +132,7 @@ func TestScopeKeyset(t *testing.T) {
 			require.NoError(t, tx.Error)
 			return tx
 		})
-		assert.Equal(t, `SELECT * FROM "users" WHERE ("age" > 85 OR ("age" = 85 AND "name" < 'name15')) AND ("age" < 88 OR ("age" = 88 AND "name" > 'name12')) ORDER BY "age" DESC,"name" LIMIT 10`, sql)
+		require.Equal(t, `SELECT * FROM "users" WHERE ("age" > 85 OR ("age" = 85 AND "name" < 'name15')) AND ("age" < 88 OR ("age" = 88 AND "name" > 'name12')) ORDER BY "age" DESC,"name" LIMIT 10`, sql)
 	}
 	{
 		sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
@@ -152,7 +151,7 @@ func TestScopeKeyset(t *testing.T) {
 			require.NoError(t, tx.Error)
 			return tx
 		})
-		assert.Equal(t, `SELECT * FROM "users" WHERE name LIKE 'name%' AND (("age" > 85 OR ("age" = 85 AND "name" < 'name15')) AND ("age" < 88 OR ("age" = 88 AND "name" > 'name12'))) ORDER BY "age","name" DESC LIMIT 10`, sql)
+		require.Equal(t, `SELECT * FROM "users" WHERE name LIKE 'name%' AND (("age" > 85 OR ("age" = 85 AND "name" < 'name15')) AND ("age" < 88 OR ("age" = 88 AND "name" > 'name12'))) ORDER BY "age","name" DESC LIMIT 10`, sql)
 	}
 }
 
@@ -654,3 +653,21 @@ func TestContext(t *testing.T) {
 	t.Run("keyset", func(t *testing.T) { testCase(t, NewKeysetAdapter) })
 	t.Run("offset", func(t *testing.T) { testCase(t, NewOffsetAdapter) })
 }
+
+// func TestAny(t *testing.T) {
+// 	resetDB(t)
+
+// 	p := pagination.New(
+// 		10, 10,
+// 		[]pagination.OrderBy{
+// 			{Field: "ID", Desc: false},
+// 		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[any], error) {
+// 			return NewKeysetAdapter[any](db.Model(&User{}))(ctx, req)
+// 		},
+// 	)
+// 	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
+// 		First: lo.ToPtr(10),
+// 	})
+// 	require.NoError(t, err)
+// 	require.Len(t, resp.Edges, 10)
+// }
