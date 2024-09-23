@@ -26,13 +26,20 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 		}
 
 		var totalCount int
-		counter, ok := finder.(Counter)
-		if ok {
+		counter, hasCounter := finder.(Counter)
+		if hasCounter {
 			var err error
 			totalCount, err = counter.Count(ctx)
 			if err != nil {
 				return nil, err
 			}
+		}
+
+		if req.FromLast && before == nil {
+			if !hasCounter {
+				return nil, errors.New("counter is required for fromLast and nil before")
+			}
+			before = &totalCount
 		}
 
 		limit, skip := req.Limit, 0
@@ -52,10 +59,13 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 			if limit > rangeLen {
 				limit = rangeLen
 			}
+			if req.FromLast && limit < rangeLen {
+				skip = *before - limit
+			}
 		}
 
 		var edges []pagination.LazyEdge[T]
-		if limit <= 0 || (counter != nil && skip >= totalCount) {
+		if limit <= 0 || (hasCounter && (skip >= totalCount || totalCount == 0)) {
 			edges = make([]pagination.LazyEdge[T], 0)
 		} else {
 			nodes, err := finder.Find(ctx, req.OrderBys, skip, limit)
@@ -79,7 +89,7 @@ func NewOffsetAdapter[T any](finder OffsetFinder[T]) pagination.ApplyCursorsFunc
 			TotalCount: totalCount,
 		}
 
-		if counter != nil {
+		if hasCounter {
 			resp.HasAfterOrPrevious = after != nil && *after < totalCount
 			resp.HasBeforeOrNext = before != nil && *before < totalCount
 		} else {
