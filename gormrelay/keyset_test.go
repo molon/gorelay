@@ -177,7 +177,7 @@ func TestKeysetCursor(t *testing.T) {
 		applyCursorsFunc pagination.ApplyCursorsFunc[*User]
 		paginateRequest  *pagination.PaginateRequest[*User]
 		expectedEdgesLen int
-		expectedPageInfo *pagination.PageInfo
+		expectedPageInfo pagination.PageInfo
 		expectedError    string
 		expectedPanic    string
 	}{
@@ -278,7 +278,7 @@ func TestKeysetCursor(t *testing.T) {
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest:  &pagination.PaginateRequest[*User]{},
 			expectedEdgesLen: 10,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -302,7 +302,7 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -323,7 +323,7 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -336,26 +336,47 @@ func TestKeysetCursor(t *testing.T) {
 			},
 		},
 		{
-			name:             "Last 2 before cursor 8",
+			name:             "Last 2 before cursor 18",
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
 				Before: lo.ToPtr(mustEncodeKeysetCursor(
-					&User{ID: 8 + 1, Name: "name8", Age: 92}, defaultOrderByKeys,
+					&User{ID: 18 + 1, Name: "name18", Age: 82}, defaultOrderByKeys,
 				)),
 				Last: lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
 				StartCursor: lo.ToPtr(mustEncodeKeysetCursor(
-					&User{ID: 6 + 1, Name: "name6", Age: 94}, defaultOrderByKeys,
+					&User{ID: 16 + 1, Name: "name16", Age: 84}, defaultOrderByKeys,
 				)),
 				EndCursor: lo.ToPtr(mustEncodeKeysetCursor(
-					&User{ID: 7 + 1, Name: "name7", Age: 93}, defaultOrderByKeys,
+					&User{ID: 17 + 1, Name: "name17", Age: 83}, defaultOrderByKeys,
+				)),
+			},
+		},
+		{
+			name:             "Last 10 without before cursor",
+			limitIfNotSet:    10,
+			maxLimit:         20,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				Last: lo.ToPtr(10),
+			},
+			expectedEdgesLen: 10,
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     false,
+				HasPreviousPage: true,
+				StartCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 90 + 1, Name: "name90", Age: 10}, defaultOrderByKeys,
+				)),
+				EndCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 99 + 1, Name: "name99", Age: 1}, defaultOrderByKeys,
 				)),
 			},
 		},
@@ -374,7 +395,7 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(5),
 			},
 			expectedEdgesLen: 5,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -401,7 +422,61 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(8),
 			},
 			expectedEdgesLen: 3,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     true,
+				HasPreviousPage: true,
+				StartCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 1 + 1, Name: "name1", Age: 99}, defaultOrderByKeys,
+				)),
+				EndCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 3 + 1, Name: "name3", Age: 97}, defaultOrderByKeys,
+				)),
+			},
+		},
+		{
+			name:             "After cursor 0, Before cursor 8, Last 5",
+			limitIfNotSet:    10,
+			maxLimit:         20,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				After: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
+				)),
+				Before: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 8 + 1, Name: "name8", Age: 92}, defaultOrderByKeys,
+				)),
+				Last: lo.ToPtr(5),
+			},
+			expectedEdgesLen: 5,
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     true,
+				HasPreviousPage: true,
+				StartCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 3 + 1, Name: "name3", Age: 97}, defaultOrderByKeys,
+				)),
+				EndCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 7 + 1, Name: "name7", Age: 93}, defaultOrderByKeys,
+				)),
+			},
+		},
+		{
+			name:             "After cursor 0, Before cursor 4, Last 8",
+			limitIfNotSet:    10,
+			maxLimit:         20,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				After: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
+				)),
+				Before: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 4 + 1, Name: "name4", Age: 96}, defaultOrderByKeys,
+				)),
+				Last: lo.ToPtr(8),
+			},
+			expectedEdgesLen: 3,
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -424,7 +499,7 @@ func TestKeysetCursor(t *testing.T) {
 				)),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -443,7 +518,7 @@ func TestKeysetCursor(t *testing.T) {
 				)),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -460,7 +535,28 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(200),
 			},
 			expectedEdgesLen: 100,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     false,
+				HasPreviousPage: false,
+				StartCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 0 + 1, Name: "name0", Age: 100}, defaultOrderByKeys,
+				)),
+				EndCursor: lo.ToPtr(mustEncodeKeysetCursor(
+					&User{ID: 99 + 1, Name: "name99", Age: 1}, defaultOrderByKeys,
+				)),
+			},
+		},
+		{
+			name:             "Last 200",
+			limitIfNotSet:    10,
+			maxLimit:         300,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				Last: lo.ToPtr(200),
+			},
+			expectedEdgesLen: 100,
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: false,
@@ -481,7 +577,7 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(0),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -498,7 +594,7 @@ func TestKeysetCursor(t *testing.T) {
 				Last: lo.ToPtr(0),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -518,7 +614,7 @@ func TestKeysetCursor(t *testing.T) {
 				First: lo.ToPtr(10),
 			},
 			expectedEdgesLen: 4,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -542,7 +638,7 @@ func TestKeysetCursor(t *testing.T) {
 				Last: lo.ToPtr(10),
 			},
 			expectedEdgesLen: 4,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -820,4 +916,39 @@ func TestNodesOnly(t *testing.T) {
 	require.Len(t, resp.Nodes, 10)
 	require.Equal(t, 1, resp.Nodes[0].ID)
 	require.Equal(t, 10, resp.Nodes[len(resp.Nodes)-1].ID)
+}
+
+func TestKeysetGenericTypeAny(t *testing.T) {
+	resetDB(t)
+
+	p := pagination.New(
+		false,
+		10, 10,
+		[]pagination.OrderBy{
+			{Field: "ID", Desc: false},
+		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[any], error) {
+			// This is a generic(T: any) function, so we need to cast the model to the correct type
+			return NewKeysetAdapter[any](db.Model(&User{}))(ctx, req)
+		},
+	)
+	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
+		First: lo.ToPtr(10),
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Edges, 10)
+	require.Len(t, resp.Edges, 10)
+	require.Equal(t, 1, resp.Edges[0].Node.(*User).ID)
+	require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.(*User).ID)
+	require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
+	require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
+
+	resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
+		Last: lo.ToPtr(10),
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Edges, 10)
+	require.Equal(t, 91, resp.Edges[0].Node.(*User).ID)
+	require.Equal(t, 100, resp.Edges[len(resp.Edges)-1].Node.(*User).ID)
+	require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
+	require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
 }

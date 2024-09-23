@@ -31,7 +31,7 @@ func TestOffsetCursor(t *testing.T) {
 		expectedEdgesLen int
 		expectedFirstKey int
 		expectedLastKey  int
-		expectedPageInfo *pagination.PageInfo
+		expectedPageInfo pagination.PageInfo
 		expectedError    string
 		expectedPanic    string
 	}{
@@ -170,7 +170,7 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 10,
 			expectedFirstKey: 0 + 1,
 			expectedLastKey:  9 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -190,7 +190,7 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 2,
 			expectedFirstKey: 1 + 1,
 			expectedLastKey:  2 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -209,7 +209,7 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 2,
 			expectedFirstKey: 0 + 1,
 			expectedLastKey:  1 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -218,23 +218,42 @@ func TestOffsetCursor(t *testing.T) {
 			},
 		},
 		{
-			name:             "Last 2 before cursor 8",
+			name:             "Last 2 before cursor 18",
 			limitIfNotSet:    10,
 			maxLimit:         20,
 			applyCursorsFunc: applyCursorsFunc,
 			paginateRequest: &pagination.PaginateRequest[*User]{
-				Before: lo.ToPtr(cursor.EncodeOffsetCursor(8)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(18)),
 				Last:   lo.ToPtr(2),
 			},
 			expectedEdgesLen: 2,
-			expectedFirstKey: 6 + 1,
-			expectedLastKey:  7 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedFirstKey: 16 + 1,
+			expectedLastKey:  17 + 1,
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
-				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(6)),
-				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(7)),
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(16)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(17)),
+			},
+		},
+		{
+			name:             "Last 10 without before cursor",
+			limitIfNotSet:    10,
+			maxLimit:         20,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				Last: lo.ToPtr(10),
+			},
+			expectedEdgesLen: 10,
+			expectedFirstKey: 90 + 1,
+			expectedLastKey:  99 + 1,
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     false,
+				HasPreviousPage: true,
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(90)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(99)),
 			},
 		},
 		{
@@ -250,7 +269,7 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 5,
 			expectedFirstKey: 1 + 1,
 			expectedLastKey:  5 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -271,7 +290,49 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 3,
 			expectedFirstKey: 1 + 1,
 			expectedLastKey:  3 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     true,
+				HasPreviousPage: true,
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(1)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(3)),
+			},
+		},
+		{
+			name:             "After cursor 0, Before cursor 8, Last 5",
+			limitIfNotSet:    10,
+			maxLimit:         20,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				After:  lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(8)),
+				Last:   lo.ToPtr(5),
+			},
+			expectedEdgesLen: 5,
+			expectedFirstKey: 3 + 1,
+			expectedLastKey:  7 + 1,
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     true,
+				HasPreviousPage: true,
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(3)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(7)),
+			},
+		},
+		{
+			name:             "After cursor 0, Before cursor 4, Last 8",
+			limitIfNotSet:    10,
+			maxLimit:         20,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				After:  lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				Before: lo.ToPtr(cursor.EncodeOffsetCursor(4)),
+				Last:   lo.ToPtr(8),
+			},
+			expectedEdgesLen: 3,
+			expectedFirstKey: 1 + 1,
+			expectedLastKey:  3 + 1,
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: true,
@@ -288,7 +349,7 @@ func TestOffsetCursor(t *testing.T) {
 				After: lo.ToPtr(cursor.EncodeOffsetCursor(99)),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -305,7 +366,7 @@ func TestOffsetCursor(t *testing.T) {
 				Before: lo.ToPtr(cursor.EncodeOffsetCursor(0)),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -324,7 +385,26 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 100,
 			expectedFirstKey: 0 + 1,
 			expectedLastKey:  99 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
+				TotalCount:      100,
+				HasNextPage:     false,
+				HasPreviousPage: false,
+				StartCursor:     lo.ToPtr(cursor.EncodeOffsetCursor(0)),
+				EndCursor:       lo.ToPtr(cursor.EncodeOffsetCursor(99)),
+			},
+		},
+		{
+			name:             "Last 200",
+			limitIfNotSet:    10,
+			maxLimit:         300,
+			applyCursorsFunc: applyCursorsFunc,
+			paginateRequest: &pagination.PaginateRequest[*User]{
+				Last: lo.ToPtr(200),
+			},
+			expectedEdgesLen: 100,
+			expectedFirstKey: 0 + 1,
+			expectedLastKey:  99 + 1,
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: false,
@@ -341,7 +421,7 @@ func TestOffsetCursor(t *testing.T) {
 				First: lo.ToPtr(0),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -358,7 +438,7 @@ func TestOffsetCursor(t *testing.T) {
 				Last: lo.ToPtr(0),
 			},
 			expectedEdgesLen: 0,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -378,7 +458,7 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 4,
 			expectedFirstKey: 96 + 1,
 			expectedLastKey:  99 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     false,
 				HasPreviousPage: true,
@@ -398,7 +478,7 @@ func TestOffsetCursor(t *testing.T) {
 			expectedEdgesLen: 4,
 			expectedFirstKey: 0 + 1,
 			expectedLastKey:  3 + 1,
-			expectedPageInfo: &pagination.PageInfo{
+			expectedPageInfo: pagination.PageInfo{
 				TotalCount:      100,
 				HasNextPage:     true,
 				HasPreviousPage: false,
@@ -461,4 +541,39 @@ func TestOffsetWithoutCounter(t *testing.T) {
 	require.Equal(t, 1, resp.Edges[0].Node.ID)
 	require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.ID)
 	require.Zero(t, resp.PageInfo.TotalCount)
+}
+
+func TestOffsetGenericTypeAny(t *testing.T) {
+	resetDB(t)
+
+	p := pagination.New(
+		false,
+		10, 10,
+		[]pagination.OrderBy{
+			{Field: "ID", Desc: false},
+		}, func(ctx context.Context, req *pagination.ApplyCursorsRequest) (*pagination.ApplyCursorsResponse[any], error) {
+			// This is a generic(T: any) function, so we need to cast the model to the correct type
+			return NewOffsetAdapter[any](db.Model(&User{}))(ctx, req)
+		},
+	)
+	resp, err := p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
+		First: lo.ToPtr(10),
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Edges, 10)
+	require.Len(t, resp.Edges, 10)
+	require.Equal(t, 1, resp.Edges[0].Node.(*User).ID)
+	require.Equal(t, 10, resp.Edges[len(resp.Edges)-1].Node.(*User).ID)
+	require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
+	require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
+
+	resp, err = p.Paginate(context.Background(), &pagination.PaginateRequest[any]{
+		Last: lo.ToPtr(10),
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Edges, 10)
+	require.Equal(t, 91, resp.Edges[0].Node.(*User).ID)
+	require.Equal(t, 100, resp.Edges[len(resp.Edges)-1].Node.(*User).ID)
+	require.Equal(t, resp.Edges[0].Cursor, *(resp.PageInfo.StartCursor))
+	require.Equal(t, resp.Edges[len(resp.Edges)-1].Cursor, *(resp.PageInfo.EndCursor))
 }

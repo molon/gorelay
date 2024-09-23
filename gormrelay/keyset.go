@@ -2,6 +2,7 @@ package gormrelay
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/molon/gorelay/cursor"
 	"github.com/molon/gorelay/pagination"
@@ -102,7 +103,7 @@ func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, l
 
 		s, err := parseSchema(db, db.Statement.Model)
 		if err != nil {
-			db.AddError(errors.Wrap(err, "parse schema"))
+			db.AddError(err)
 			return db
 		}
 
@@ -158,6 +159,33 @@ func scopeKeyset(after, before *map[string]any, orderBys []pagination.OrderBy, l
 func findByKeyset[T any](db *gorm.DB, after, before *map[string]any, orderBys []pagination.OrderBy, limit int, fromLast bool) ([]T, error) {
 	var nodes []T
 	if limit == 0 {
+		return nodes, nil
+	}
+
+	// If T is not a struct or struct pointer, we need to use db.Statement.Model to find
+	tType := reflect.TypeOf((*T)(nil)).Elem()
+	if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
+		if db.Statement.Model == nil {
+			return nil, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
+		}
+
+		modelType := reflect.TypeOf(db.Statement.Model)
+		sliceType := reflect.SliceOf(modelType)
+		nodesVal := reflect.New(sliceType).Elem()
+
+		err := db.Scopes(scopeKeyset(after, before, orderBys, limit, fromLast)).Find(nodesVal.Addr().Interface()).Error
+		if err != nil {
+			return nil, errors.Wrap(err, "find")
+		}
+
+		nodes := make([]T, nodesVal.Len())
+		for i := 0; i < nodesVal.Len(); i++ {
+			nodes[i] = nodesVal.Index(i).Interface().(T)
+		}
+
+		if fromLast {
+			lo.Reverse(nodes)
+		}
 		return nodes, nil
 	}
 

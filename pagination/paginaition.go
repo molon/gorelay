@@ -36,8 +36,8 @@ type PageInfo struct {
 type PaginateResponse[T any] struct {
 	Edges []Edge[T] `json:"edges,omitempty"`
 	// Sometimes we need nodes only
-	Nodes    []T       `json:"nodes,omitempty"`
-	PageInfo *PageInfo `json:"pageInfo"`
+	Nodes    []T      `json:"nodes,omitempty"`
+	PageInfo PageInfo `json:"pageInfo"`
 }
 
 type Pagination[T any] interface {
@@ -97,7 +97,7 @@ func New[T any](nodesOnly bool, maxLimit int, limitIfNotSet int, orderBysIfNotSe
 		if err != nil {
 			return nil, err
 		}
-		return &PaginateResponse[T]{Edges: edges, Nodes: nodes, PageInfo: pageInfo}, nil
+		return &PaginateResponse[T]{Edges: edges, Nodes: nodes, PageInfo: *pageInfo}, nil
 	})
 }
 

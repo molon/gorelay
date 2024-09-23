@@ -2,6 +2,7 @@ package gormrelay
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/molon/gorelay/cursor"
 	"github.com/molon/gorelay/pagination"
@@ -23,19 +24,31 @@ func NewOffsetFinder[T any](db *gorm.DB) cursor.OffsetFinder[T] {
 			db = db.WithContext(ctx)
 		}
 
-		if db.Statement.Model == nil {
-			var t T
-			db = db.Model(t)
-		}
-
 		if skip > 0 {
 			db = db.Offset(skip)
+		}
+
+		db = db.Limit(limit)
+
+		// If T is not a struct or struct pointer, we need to use db.Statement.Model to find
+		basedOnModel := false
+		tType := reflect.TypeOf((*T)(nil)).Elem()
+		if tType.Kind() != reflect.Struct && (tType.Kind() != reflect.Ptr || tType.Elem().Kind() != reflect.Struct) {
+			if db.Statement.Model == nil {
+				return nil, errors.New("db.Statement.Model is nil and T is not a struct or struct pointer")
+			}
+			basedOnModel = true
+		}
+
+		if !basedOnModel && db.Statement.Model == nil {
+			var t T
+			db = db.Model(t)
 		}
 
 		if len(orderBys) > 0 {
 			s, err := parseSchema(db, db.Statement.Model)
 			if err != nil {
-				return nil, errors.Wrap(err, "parse schema")
+				return nil, err
 			}
 
 			orderByColumns := make([]clause.OrderByColumn, 0, len(orderBys))
@@ -53,7 +66,25 @@ func NewOffsetFinder[T any](db *gorm.DB) cursor.OffsetFinder[T] {
 			db = db.Order(clause.OrderBy{Columns: orderByColumns})
 		}
 
-		if err := db.Limit(limit).Find(&nodes).Error; err != nil {
+		if basedOnModel {
+			modelType := reflect.TypeOf(db.Statement.Model)
+			sliceType := reflect.SliceOf(modelType)
+			nodesVal := reflect.New(sliceType).Elem()
+
+			err := db.Find(nodesVal.Addr().Interface()).Error
+			if err != nil {
+				return nil, errors.Wrap(err, "find")
+			}
+
+			nodes := make([]T, nodesVal.Len())
+			for i := 0; i < nodesVal.Len(); i++ {
+				nodes[i] = nodesVal.Index(i).Interface().(T)
+			}
+
+			return nodes, nil
+		}
+
+		if err := db.Find(&nodes).Error; err != nil {
 			return nil, errors.Wrap(err, "find")
 		}
 		return nodes, nil
